@@ -1,3 +1,4 @@
+import OBR from "https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm";
 import { NS, TOTAL, TEAM_NAME } from "./rules.mjs";
 
 const element = id => document.getElementById(id);
@@ -128,8 +129,7 @@ element("stop-match").addEventListener("click", () => {
   void run({ type: "lobby" });
 });
 
-async function connect() {
-  const { default: OBR } = await import("https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm");
+function connect() {
   OBR.onReady(async () => {
     try {
       const [role, metadata] = await Promise.all([
@@ -151,10 +151,7 @@ async function connect() {
 }
 
 if (new URLSearchParams(location.search).has("obrref")) {
-  void connect().catch(error => {
-    console.error(error);
-    element("loading").textContent = "Не загрузился SDK Owlbear.";
-  });
+  connect();
 } else {
   element("loading").textContent = "Открой панель «Доминион» в комнате Owlbear.";
 }
