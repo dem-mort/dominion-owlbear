@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Доминион</title>
+<link rel="stylesheet" href="./panel.css">
+<main>
+  <header>
+    <div class="eyebrow">ДОМИНИОН · 6×6</div>
+    <h1>Осколок Силы</h1>
+  </header>
+  <section id="loading" role="status">Открываю сцену…</section>
+  <section id="lobby" hidden>
+    <button type="button" class="primary" id="practice" hidden>Попробовать одному за К1</button>
+    <h2>Выбор фишки для матча</h2>
+    <p>Занято <strong id="count">0</strong> из 12</p>
+    <div class="teams">
+      <div><h3 class="red">Красные</h3><div id="red-slots" class="slots"></div></div>
+      <div><h3 class="blue">Синие</h3><div id="blue-slots" class="slots"></div></div>
+    </div>
+    <p id="picked" role="status"></p>
+    <p>После старта фишка появится на респе.</p>
+    <form id="start-form" hidden>
+      <button type="submit" class="primary" id="start">Начать матч · 12:00</button>
+      <details>
+        <summary>Настроить скорость бега</summary>
+        <label for="route">Сколько секунд в игре от красного респа до центра Капли?</label>
+        <input id="route" name="route" type="number" min="2" max="90" step="0.1" inputmode="decimal" placeholder="Пробный темп · 10 с">
+      </details>
+    </form>
+  </section>
+  <section id="playing" hidden>
+    <div class="scoreboard" aria-label="Счёт матча">
+      <div class="red"><span>Красные</span><strong id="red-score">0</strong></div>
+      <time id="timer">12:00</time>
+      <div class="blue"><span>Синие</span><strong id="blue-score">0</strong></div>
+    </div>
+    <p id="winner" class="highlight" role="status"></p>
+    <p id="control" class="highlight"></p>
+    <p id="me" role="status"></p>
+    <h2 id="points-heading">Точки</h2>
+    <ul id="points" class="point-list">
+      <li><button type="button" data-point="Трефа">Трефа</button><span></span></li>
+      <li><button type="button" data-point="Капля">Капля</button><span></span></li>
+      <li><button type="button" data-point="Звезда">Звезда</button><span></span></li>
+    </ul>
+    <p id="free-move" class="fine" hidden>Для свободного движения выбери «Бег» справа и кликни по карте или веди фишку мышью.</p>
+    <p id="pets"></p>
+    <p id="clash"></p>
+    <p id="pace" class="fine"></p>
+    <button id="restart" class="primary" hidden>Вернуться в лобби</button>
+    <details id="stop" hidden>
+      <summary>Управление матчем</summary>
+      <button id="stop-match" type="button">Остановить матч и вернуться в лобби</button>
+    </details>
+  </section>
+  <p id="notice" role="status" class="fine"></p>
+</main>
+<script type="module" src="./panel.mjs"></script>
+</html>

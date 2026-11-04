@@ -1,0 +1,37 @@
+:root {
+  color-scheme: dark;
+  font: 14px/1.45 system-ui, sans-serif;
+  background: #182631;
+  color: #edf3f8;
+}
+body { margin: 0; }
+main { padding: 13px 15px; }
+[hidden] { display: none !important; }
+.eyebrow { font-size: 11px; font-weight: 750; letter-spacing: .07em; color: #bfd0dc; }
+h1 { margin: 0 0 11px; font-size: 23px; }
+h2 { font-size: 15px; margin: 12px 0 5px; }
+h3 { margin: 0; font-size: 13px; }
+p { margin: 7px 0; }
+.red { color: #ffaaa0; }
+.blue { color: #91ddff; }
+.teams, .scoreboard { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 5px; }
+button, input { font: inherit; border-radius: 7px; }
+button { background: #283d4c; border: 1px solid #597383; padding: 5px 4px; color: #edf3f8; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+button[aria-pressed="true"] { background: #655299; border-color: #c4a8ff; }
+button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px solid #c4a8ff; outline-offset: 2px; }
+.primary { display: block; width: 100%; padding: 7px; background: #7356b0; border-color: #a88ee0; font-weight: 700; margin-top: 9px; }
+details { margin-top: 9px; }
+summary { cursor: pointer; }
+label { display: block; margin-top: 4px; }
+input { box-sizing: border-box; width: 100%; padding: 5px 7px; background: #182631; border: 1px solid #597383; }
+.scoreboard { grid-template-columns: 1fr 1fr 1fr; align-items: center; text-align: center; padding: 7px 4px; border-radius: 8px; background: #223643; }
+.scoreboard strong { display: block; font-size: 22px; line-height: 1.25; }
+.scoreboard time { font-size: 25px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.highlight { color: #ffd6a8; font-weight: 650; }
+ul { margin: 2px 0 6px; padding-left: 18px; }
+.point-list { list-style: none; padding: 0; }
+.point-list li { display: grid; grid-template-columns: 75px 1fr; align-items: center; gap: 8px; margin: 4px 0; }
+.point-list button { padding: 3px 4px; }
+.fine { color: #bfd0dc; font-size: 12px; }
