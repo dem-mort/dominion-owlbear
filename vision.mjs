@@ -1,3 +1,4 @@
+import { boardPanelViews } from "./board-panel.mjs?v=0.4.1";
 import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.4.0";
 
 export const HOME_KEY = NS + "/lobby-position";
@@ -5,7 +6,7 @@ export const PAWN_KEY = NS + "/pawn";
 export const VIEW_KEY = NS + "/local-view";
 export const HELP_KEY = NS + "/help-view";
 export const SIGHT_RADIUS = 72;
-const guideUrl = new URL("./guide.svg?v=0.4.0", import.meta.url).href;
+
 
 export function originalItem(item) {
   return item.metadata?.[HOME_KEY] ? { ...item, ...item.metadata[HOME_KEY] } : item;
@@ -58,23 +59,6 @@ function signature(item) {
   return JSON.stringify([item.position, item.rotation, item.scale, item.image, item.grid, item.text, item.name]);
 }
 
-export function guideView(state, items) {
-  if (!state || POINT_NAMES.map(name => items.find(item => item.layer === "PROP" && item.name === name)?.id).join("/") !== state.board) return null;
-  const map = items.find(item => item.layer === "MAP" && item.name === "Осколок Силы · Карта");
-  if (!map?.image) return null;
-  const guide = {
-    ...map, name: "Доминион · Правила боя", layer: "NOTE", visible: true, locked: true, disableHit: true,
-    image: { ...map.image, url: guideUrl, mime: "image/svg+xml" }, metadata: { [HELP_KEY]: true },
-  };
-  delete guide.attachedTo;
-  if (map.text) {
-    guide.text = structuredClone(map.text);
-    guide.text.plainText = "";
-    guide.text.richText = [{ type: "paragraph", children: [{ text: "" }] }];
-  }
-  return guide;
-}
-
 // Local items belong to this browser's view. They never change shared visibility.
 export function createLocalVision(OBR, connection, role, onError) {
   let current = { state: null, items: [], ready: false };
@@ -102,8 +86,7 @@ export function createLocalVision(OBR, connection, role, onError) {
 
         const desired = new Map(visiblePawns(snapshot.state, snapshot.items, connection, role)
           .map(view => [view.source, view.item]));
-        const guide = guideView(snapshot.state, snapshot.items);
-        if (guide) desired.set(HELP_KEY, guide);
+        for (const view of boardPanelViews(snapshot.state, snapshot.items)) desired.set(view.source, view.item);
         const removed = [...views.keys()].filter(id => !desired.has(id));
         if (removed.length) {
           await OBR.scene.local.deleteItems(removed.map(id => views.get(id).item.id));

@@ -1,5 +1,5 @@
 import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.4.0";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.4.0";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.4.1";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -104,8 +104,8 @@ export async function initialize(OBR) {
       const remaining = Math.max(0, Math.ceil(match.nextWave - match.elapsed));
       desired.set(pet.id, { text: pet.available ? "ГОТОВ" : remaining + " с" });
     }
-    for (const [index, id] of board.scores.entries()) {
-      desired.set(id, { text: String(match.score[index === 0 ? "red" : "blue"]) });
+    for (const id of board.scores) {
+      desired.set(id, { text: "" });
     }
     const changes = new Map([...desired].filter(([id, values]) => publishedItems.get(id) !== JSON.stringify(values)));
     if (!changes.size) return;
@@ -144,6 +144,17 @@ export async function initialize(OBR) {
     const loaded = readBoard(items.map(originalItem));
     board = loaded;
     if (!host || (previous && previous.key === loaded?.key)) return;
+    if (board) {
+      await OBR.scene.items.updateItems(board.scores, items => {
+        for (const item of items) {
+          item.metadata ??= {};
+          item.metadata[NS + "/legacy-score-text"] ??= { textItemType: item.textItemType ?? "LABEL", text: plainCopy(item.text), locked: Boolean(item.locked) };
+          item.textItemType = "TEXT";
+          item.locked = true;
+          label(item, "");
+        }
+      });
+    }
     match = null;
     claims = {};
     aspects = Object.fromEntries((board?.slots ?? []).map(slot => [slot.id, defaultAspect(slot)]));
@@ -175,7 +186,7 @@ export async function initialize(OBR) {
           if (item.metadata?.[PAWN_KEY]) delete item.metadata[PAWN_KEY];
           label(item, claims[item.id]?.name || slot.name.slice(0, 2));
         } else {
-          label(item, points.has(item.id) ? "" : pets.has(item.id) ? "КД" : "0");
+          label(item, pets.has(item.id) ? "КД" : "");
         }
       }
     });
