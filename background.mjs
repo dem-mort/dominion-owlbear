@@ -1,8 +1,8 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.8.1";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.8.1";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.8.1";
-import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.8.1";
-import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.8.1";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.8.2";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.8.2";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.8.2";
+import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.8.2";
+import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.8.2";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -162,7 +162,7 @@ export async function initialize(OBR, Command) {
     const previousPhase = state?.phase;
     normalizeSelection();
     const snapshot = {
-      rules: "0.8.1",
+      rules: "0.8.2",
       board: board.key, host: connection,
       epoch: (state?.board === board.key ? epochOf(state) : 0) + (acquire ? 1 : 0),
       revision: !acquire && state?.board === board.key && Number.isSafeInteger(state.revision) ? state.revision + 1 : 1,

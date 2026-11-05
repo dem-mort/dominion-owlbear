@@ -1,18 +1,13 @@
-import { ownedIds } from "./control.mjs?v=0.8.1";
-import { NS } from "./rules.mjs?v=0.8.1";
+import { ownedIds } from "./control.mjs?v=0.8.2";
+import { NS } from "./rules.mjs?v=0.8.2";
 
 export const TARGET_KEY = NS + "/map-target";
 const VIEW_KEY = NS + "/local-view";
 const HOME_KEY = NS + "/lobby-position";
-const targetUrl = new URL("./target.svg?v=0.8.1", import.meta.url).href;
-const readyUrl = new URL("./target-ready.svg?v=0.8.1", import.meta.url).href;
 const finitePosition = position => Number.isFinite(position?.x) && Number.isFinite(position?.y);
 const validId = value => typeof value === "string" && value.length > 0;
-const TEXT_STYLE = {
-  fillColor: "#ffffff", fillOpacity: 0, strokeColor: "#000000", strokeOpacity: 0, strokeWidth: 0,
-  textAlign: "CENTER", textAlignVertical: "MIDDLE", fontFamily: "Roboto", fontSize: 12,
-  fontWeight: 400, lineHeight: 1, padding: 0,
-};
+// SDK 3.1.0 Command enum; callers can supply the imported SDK enum as well.
+const PATH_COMMAND = Object.freeze({ MOVE: 0, LINE: 1, CUBIC: 4, CLOSE: 5 });
 
 function direction(combatId, pawnId) {
   let hash = 2166136261;
@@ -20,7 +15,7 @@ function direction(combatId, pawnId) {
   return hash % 12;
 }
 
-// Both the local image and the pointer tool use this geometry. Five twelfths of
+// Both the local path and the pointer tool use this geometry. Five twelfths of
 // a turn per round visits every direction before repeating after twelve rounds.
 export function targetPosition(fight, pawnId, scale = 1) {
   if (!validId(fight?.id) || !validId(pawnId) || !Number.isSafeInteger(fight.round) || fight.round < 1 ||
@@ -57,27 +52,37 @@ export function mapTarget(state, connection) {
   return target ? { ...target, ready: Array.isArray(fight.ready) && fight.ready.includes(id) } : null;
 }
 
-// Clone an existing native Image schema, restoring the saved class image's
-// fields first. This never publishes or edits a shared scene item.
-export function targetViews(state, items, connection) {
+// Native paths avoid loading an external SVG into Owlbear's Image renderer.
+// Their outer stroke edge and the pointer hit geometry share the same radius.
+export function targetViews(state, items, connection, Command = PATH_COMMAND) {
   const target = mapTarget(state, connection);
   if (!target || !Array.isArray(items)) return [];
   const pawn = items.find(item => item.id === target.id);
   if (!pawn) return [];
   const original = pawn.metadata?.[HOME_KEY] ? { ...pawn, ...pawn.metadata[HOME_KEY] } : pawn;
-  if (!original.image) return [];
   const source = TARGET_KEY + "/" + connection;
-  const size = 2 * target.radius / 140;
+  const size = target.radius / 14;
+  const { MOVE: M, LINE: L, CUBIC: C, CLOSE: Z } = Command ?? PATH_COMMAND;
+  const circle = radius => {
+    const k = radius * .55228475;
+    return [[M, 0, -radius], [C, k, -radius, radius, -k, radius, 0],
+      [C, radius, k, k, radius, 0, radius], [C, -k, radius, -radius, k, -radius, 0],
+      [C, -radius, -k, -k, -radius, 0, -radius], [Z]];
+  };
+  const glyph = target.ready ? [[M, -7, 0], [L, -2, 5], [L, 8, -6]] : [
+    [M, -7, 0], [L, -3, 0], [M, 3, 0], [L, 7, 0],
+    [M, 0, -7], [L, 0, -3], [M, 0, 3], [L, 0, 7], ...circle(1),
+  ];
   const item = {
-    ...original, type: "IMAGE", name: target.ready ? "Доминион · Действие принято" : "Доминион · Цель действия",
+    id: pawn.id, createdUserId: original.createdUserId ?? "unknown", lastModified: original.lastModified,
+    lastModifiedUserId: original.lastModifiedUserId,
+    type: "PATH", name: target.ready ? "Доминион · Действие принято" : "Доминион · Цель действия",
     layer: "NOTE", zIndex: 10000, visible: true, locked: true, disableHit: true,
-    image: { url: target.ready ? readyUrl : targetUrl, mime: "image/svg+xml", width: 140, height: 140 },
-    grid: { dpi: 150, offset: { x: 70, y: 70 } },
     position: { ...target.position }, rotation: 0, scale: { x: size, y: size },
-    text: { type: "PLAIN", plainText: "", richText: [{ type: "paragraph", children: [{ text: "" }] }],
-      width: 140, height: 140, style: { ...TEXT_STYLE } },
+    commands: [...circle(12.5), ...glyph], fillRule: "nonzero",
+    style: { fillColor: target.ready ? "#092d21" : "#08212c", fillOpacity: .94,
+      strokeColor: target.ready ? "#76ffad" : "#5feaff", strokeOpacity: 1, strokeWidth: 3, strokeDash: [] },
     metadata: { [VIEW_KEY]: source, [TARGET_KEY]: target.key },
   };
-  delete item.attachedTo;
   return [{ source, id: target.id, item }];
 }

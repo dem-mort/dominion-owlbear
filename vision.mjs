@@ -1,6 +1,6 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.8.1";
-import { targetViews } from "./targets.mjs?v=0.8.1";
-import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.8.1";
+import { boardPanelViews } from "./board-panel.mjs?v=0.8.2";
+import { targetViews } from "./targets.mjs?v=0.8.2";
+import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.8.2";
 
 export const HOME_KEY = NS + "/lobby-position";
 export const PAWN_KEY = NS + "/pawn";
@@ -93,7 +93,7 @@ export function createLocalVision(OBR, connection, role, onError, Command) {
         const desired = new Map(visiblePawns(snapshot.state, snapshot.items, connection, role)
           .map(view => [view.source, view.item]));
         for (const view of boardPanelViews(snapshot.state, snapshot.items, Command)) desired.set(view.source, view.item);
-        for (const view of targetViews(snapshot.state, snapshot.items, connection)) desired.set(view.source, view.item);
+        for (const view of targetViews(snapshot.state, snapshot.items, connection, Command)) desired.set(view.source, view.item);
         const removed = [...views.keys()].filter(id => !desired.has(id));
         if (removed.length) {
           await OBR.scene.local.deleteItems(removed.map(id => views.get(id).item.id));
