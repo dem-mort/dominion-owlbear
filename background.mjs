@@ -1,4 +1,5 @@
 import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick } from "./rules.mjs";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -6,7 +7,10 @@ const mode = tool + "/drag";
 const icon = new URL("./run.svg", import.meta.url).href;
 const clock = () => performance.now() / 1000;
 const stateKey = NS + "/state";
-const homeKey = NS + "/lobby-position";
+const homeKey = HOME_KEY;
+const blankImage = new URL("./blank.svg", import.meta.url).href;
+// SDK item updaters use Immer draft proxies, which structuredClone cannot copy.
+const plainCopy = value => value == null ? value : JSON.parse(JSON.stringify(value));
 
 function label(item, value) {
   if (item.text?.type !== "PLAIN" || item.text.plainText === value) return;
@@ -26,8 +30,15 @@ export async function initialize(OBR) {
   let lastTick = 0;
   let lastPublish = -Infinity;
   let publishedItems = new Map();
+  let sceneItems = [];
+  let sceneReady = false;
+  let lastWarning = -Infinity;
+  const vision = createLocalVision(OBR, connection, role, fail);
 
-  OBR.room.onMetadataChange(metadata => { state = metadata[stateKey]; });
+  OBR.room.onMetadataChange(metadata => {
+    state = metadata[stateKey];
+    vision.update(state, sceneItems, sceneReady);
+  });
   state = (await OBR.room.getMetadata())[stateKey];
 
   async function publish() {
@@ -46,6 +57,7 @@ export async function initialize(OBR) {
         elapsed: match.elapsed, winner: match.winner, score: { ...match.score },
         nextWave: match.nextWave, lastClash: match.lastClash,
         routeSeconds: match.routeSeconds, calibrated: match.calibrated,
+        sightRadius: SIGHT_RADIUS * board.scale,
         points: match.points.map(({ name, team, clash, progress, capturing }) => ({ name, team, clash, progress, capturing })),
         pets: match.pets.map(({ name, available }) => ({ name, available })),
         pawns: Object.fromEntries(Object.values(match.pawns)
@@ -54,16 +66,17 @@ export async function initialize(OBR) {
       });
     }
     state = snapshot;
+    vision.update(state, sceneItems, sceneReady);
     await OBR.room.setMetadata({ [stateKey]: snapshot });
   }
 
   async function syncItems() {
     const desired = new Map();
     for (const pawn of Object.values(match.pawns)) {
-      let text = pawn.claim?.name || pawn.name.slice(0, 2);
-      if (pawn.deadUntil) text += " · " + Math.ceil(pawn.deadUntil - match.elapsed) + " с";
-      if (pawn.pet) text += " · баф";
-      desired.set(pawn.id, { text, position: pawn.position, visible: Boolean(pawn.claim), locked: true });
+      desired.set(pawn.id, {
+        text: "", position: pawn.position, visible: false, locked: true,
+        pawn: { pet: pawn.pet, deadUntil: pawn.deadUntil },
+      });
     }
     for (const point of match.points) desired.set(point.id, { text: point.team ? TEAM_NAME[point.team] : "" });
     for (const pet of match.pets) {
@@ -78,13 +91,20 @@ export async function initialize(OBR) {
     await OBR.scene.items.updateItems([...changes.keys()], items => {
       for (const item of items) {
         const values = changes.get(item.id);
+        if (values.pawn) {
+          const slot = board.slots.find(slot => slot.id === item.id);
+          item.metadata ??= {};
+          item.metadata[homeKey] ??= {
+            position: { ...slot.position }, locked: slot.locked,
+            visible: item.visible, image: plainCopy(item.image), text: plainCopy(item.text),
+          };
+          item.metadata[PAWN_KEY] = values.pawn;
+          item.image = { url: blankImage, mime: "image/svg+xml", width: 140, height: 140 };
+        }
         label(item, values.text);
         if (values.position) item.position = { ...values.position };
         if (values.visible !== undefined) item.visible = values.visible;
         if (values.locked) {
-          const slot = board.slots.find(slot => slot.id === item.id);
-          item.metadata ??= {};
-          item.metadata[homeKey] ??= { position: { ...slot.position }, locked: slot.locked };
           item.locked = true;
         }
       }
@@ -95,9 +115,10 @@ export async function initialize(OBR) {
   async function loadBoard(ready) {
     const previous = board;
     const items = ready ? await OBR.scene.items.getItems() : [];
-    const loaded = readBoard(items.map(item => item.metadata?.[homeKey]
-      ? { ...item, ...item.metadata[homeKey] }
-      : item));
+    sceneReady = ready;
+    sceneItems = items;
+    vision.update(state, sceneItems, sceneReady);
+    const loaded = readBoard(items.map(originalItem));
     board = loaded;
     if (!host || (previous && previous.key === loaded?.key)) return;
     match = null;
@@ -119,10 +140,14 @@ export async function initialize(OBR) {
       for (const item of items) {
         const slot = slots.get(item.id);
         if (slot) {
+          const original = originalItem(item);
           item.position = { ...slot.position };
           item.visible = true;
           item.locked = slot.locked;
+          if (original.image) item.image = plainCopy(original.image);
+          if (original.text) item.text = plainCopy(original.text);
           if (item.metadata?.[homeKey]) delete item.metadata[homeKey];
+          if (item.metadata?.[PAWN_KEY]) delete item.metadata[PAWN_KEY];
           label(item, claims[item.id]?.name || slot.name.slice(0, 2));
         } else {
           label(item, points.has(item.id) ? "" : pets.has(item.id) ? "КД" : "0");
@@ -135,12 +160,19 @@ export async function initialize(OBR) {
     await publish();
   }
 
-  const fail = error => {
-    console.error("Dominion", error);
-    void OBR.notification.show("Доминион: проверьте подключение к сцене.", "ERROR");
-  };
+  function fail(error) {
+    console.error("Dominion", error?.message ?? JSON.stringify(error));
+    if (clock() - lastWarning >= 5) {
+      lastWarning = clock();
+      void OBR.notification.show("Доминион: проверьте подключение к сцене.", "ERROR");
+    }
+  }
   OBR.scene.onReadyChange(ready => { void loadBoard(ready).catch(fail); });
   await loadBoard(await OBR.scene.isReady());
+  OBR.scene.items.onChange(items => {
+    sceneItems = items;
+    vision.update(state, sceneItems, sceneReady);
+  });
 
   if (host) {
     OBR.broadcast.onMessage(command, ({ connectionId, data }) => {
