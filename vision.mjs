@@ -1,11 +1,11 @@
-import { distance, NS, POINT_NAMES } from "./rules.mjs?v=0.3.1";
+import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.4.0";
 
 export const HOME_KEY = NS + "/lobby-position";
 export const PAWN_KEY = NS + "/pawn";
 export const VIEW_KEY = NS + "/local-view";
 export const HELP_KEY = NS + "/help-view";
 export const SIGHT_RADIUS = 72;
-const guideUrl = new URL("./guide.svg", import.meta.url).href;
+const guideUrl = new URL("./guide.svg?v=0.4.0", import.meta.url).href;
 
 export function originalItem(item) {
   return item.metadata?.[HOME_KEY] ? { ...item, ...item.metadata[HOME_KEY] } : item;
@@ -32,6 +32,8 @@ export function visiblePawns(state, items, connection, role) {
     const text = structuredClone(original.text);
     let nickname = slot.name.slice(0, 2);
     if (claim.name && claim.name !== nickname) nickname += " · " + claim.name;
+    if (ASPECTS[status.aspect]) nickname += " · " + ASPECTS[status.aspect].short;
+    if (!status.deadUntil && Number.isFinite(status.hp) && status.hp < 100) nickname += " · " + status.hp + "%";
     if (status.deadUntil) nickname += " · " + Math.max(0, Math.ceil(status.deadUntil - state.elapsed)) + " с";
     if (status.pet) nickname += " · баф";
     if (text?.type === "PLAIN") {

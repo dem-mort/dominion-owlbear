@@ -1,5 +1,5 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, chooseCombatAction, combatViews } from "./rules.mjs?v=0.3.1";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.3.1";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.4.0";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.4.0";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -24,6 +24,7 @@ export async function initialize(OBR) {
   let board = null;
   let match = null;
   let claims = {};
+  let aspects = {};
   let state = null;
   let busy = false;
   const pending = [];
@@ -62,9 +63,10 @@ export async function initialize(OBR) {
     }
     lastPublish = clock();
     const snapshot = {
+      rules: "0.4.0",
       board: board.key, host: connection,
       slots: board.slots.map(({ id, name, team }) => ({ id, name, team })),
-      claims: { ...claims }, phase: !match ? "lobby" : match.winner ? "finished" : "playing",
+      claims: { ...claims }, aspects: { ...aspects }, phase: !match ? "lobby" : match.winner ? "finished" : "playing",
     };
     if (match) {
       Object.assign(snapshot, {
@@ -78,7 +80,7 @@ export async function initialize(OBR) {
         pets: match.pets.map(({ name, available, combat }) => ({ name, available, fighting: Boolean(combat) })),
         pawns: Object.fromEntries(Object.values(match.pawns)
           .filter(pawn => pawn.claim)
-          .map(({ id, pet, deadUntil, destination, deathReason }) => [id, { pet, deadUntil, deathReason, moving: Boolean(destination) }])),
+          .map(({ id, pet, deadUntil, destination, deathReason, hp, aspect, retreating }) => [id, { pet, deadUntil, deathReason, hp: Math.round(hp), aspect, retreating, moving: Boolean(destination) }])),
       });
       lastCombatRevision = match.combatRevision;
     }
@@ -94,7 +96,7 @@ export async function initialize(OBR) {
     for (const pawn of Object.values(match.pawns)) {
       desired.set(pawn.id, {
         text: "", position: pawn.position, visible: false, locked: true,
-        pawn: { pet: pawn.pet, deadUntil: pawn.deadUntil },
+        pawn: { pet: pawn.pet, deadUntil: pawn.deadUntil, hp: Math.round(pawn.hp), aspect: pawn.aspect },
       });
     }
     for (const point of match.points) desired.set(point.id, { text: point.team ? TEAM_NAME[point.team] : "" });
@@ -144,6 +146,7 @@ export async function initialize(OBR) {
     if (!host || (previous && previous.key === loaded?.key)) return;
     match = null;
     claims = {};
+    aspects = Object.fromEntries((board?.slots ?? []).map(slot => [slot.id, defaultAspect(slot)]));
     pending.length = 0;
     publishedItems.clear();
     if (board && items.some(item => item.metadata?.[homeKey] && board.slots.some(slot => slot.id === item.id))) {
@@ -199,9 +202,16 @@ export async function initialize(OBR) {
     OBR.broadcast.onMessage(command, ({ connectionId, data }) => {
       if (!data || !board || state?.host !== connection || data.board !== board.key) return;
       const local = connectionId === connection;
-      if (data.type === "combat-action") {
+      if (data.type === "combat-click") {
         if (match?.pawns[data.id]?.claim?.connection !== connectionId) return;
-        chooseCombatAction(match, data.id, data.combat, data.round, data.action);
+        combatClick(match, data.id, data.combat, data.round);
+        return;
+      }
+      if (data.type === "retreat") {
+        const pawn = match?.pawns[data.id];
+        if (!pawn || match.winner || pawn.deadUntil || pawn.claim?.connection !== connectionId) return;
+        pawn.destination = { ...board.spawn[pawn.team] };
+        pawn.retreating = true;
         return;
       }
       if (data.type === "move" || data.type === "move-to-point") {
@@ -214,11 +224,12 @@ export async function initialize(OBR) {
         const { x, y } = target || {};
         if (!Number.isFinite(x) || !Number.isFinite(y)) return;
         pawn.destination = { x: Math.max(min.x, Math.min(max.x, x)), y: Math.max(min.y, Math.min(max.y, y)) };
+        pawn.retreating = false;
         return;
       }
       if (data.type === "stop") {
         const pawn = match?.pawns[data.id];
-        if (pawn?.claim?.connection === connectionId) pawn.destination = null;
+        if (pawn?.claim?.connection === connectionId) { pawn.destination = null; pawn.retreating = false; }
         return;
       }
       const manage = async () => {
@@ -227,7 +238,13 @@ export async function initialize(OBR) {
           const name = typeof data.name === "string" ? data.name.trim().slice(0, 24) : "";
           if (!name) return;
           for (const id of Object.keys(claims)) if (claims[id].connection === connectionId) delete claims[id];
-          claims[data.id] = { connection: connectionId, name };
+          claims[data.id] = { connection: connectionId, name, aspect: aspects[data.id] };
+          await publish();
+        } else if (data.type === "set-aspect" && !match && (local || claims[data.id]?.connection === connectionId)) {
+          const slot = board.slots.find(slot => slot.id === data.id);
+          if (!slot || !aspectOptions(slot).includes(data.aspect)) return;
+          aspects[data.id] = data.aspect;
+          if (claims[data.id]) claims[data.id].aspect = data.aspect;
           await publish();
         } else if (data.type === "release" && !match && claims[data.id]?.connection === connectionId) {
           delete claims[data.id];
@@ -238,7 +255,7 @@ export async function initialize(OBR) {
           if (practice ? claimCount !== 0 : claimCount === 0) return;
           if (practice) {
             const slot = board.slots.find(slot => slot.name.startsWith("К1 · "));
-            claims[slot.id] = { connection, name: "К1" };
+            claims[slot.id] = { connection, name: "К1", aspect: aspects[slot.id] };
           }
           const calibrated = Number.isFinite(data.routeSeconds) && data.routeSeconds >= 2 && data.routeSeconds <= 90;
           match = newMatch(board, claims, calibrated ? data.routeSeconds : DEFAULT_ROUTE_SECONDS, calibrated);
@@ -249,9 +266,10 @@ export async function initialize(OBR) {
           await publish();
         } else if (data.type === "practice-opponent" && local && match?.practice && !match.winner && !match.practiceOpponent) {
           const slot = board.slots.find(slot => slot.name.startsWith("С1 · "));
-          const claim = { connection: NS + "/practice-bot", name: "Учебный" };
+          const claim = { connection: NS + "/practice-bot", name: "Учебный", aspect: aspects[slot.id] };
           claims[slot.id] = claim;
           match.pawns[slot.id].claim = claim;
+          match.pawns[slot.id].aspect = claim.aspect;
           match.pawns[slot.id].bot = true;
           match.pawns[slot.id].destination = { ...match.points[1].position };
           match.practiceOpponent = true;

@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Доминион</title>
-<link rel="stylesheet" href="./panel.css?v=0.3.0">
+<link rel="stylesheet" href="./panel.css?v=0.4.0">
 <main>
   <header>
     <div class="eyebrow">ДОМИНИОН · 6×6</div>
@@ -19,6 +19,16 @@
       <div><h3 class="blue">Синие</h3><div id="blue-slots" class="slots"></div></div>
     </div>
     <p id="picked" role="status"></p>
+    <section id="own-aspect" hidden>
+      <label for="aspect">Мой аспект на этот матч</label>
+      <select id="aspect"></select>
+      <p id="aspect-help" class="fine"></p>
+    </section>
+    <details id="team-aspects" hidden>
+      <summary>Аспекты команд · настройка ведущего</summary>
+      <div id="aspect-lineup"></div>
+      <p class="fine">ДД наносит урон. САП усиливает активных ДД. ХИЛ восстанавливает здоровье. Менять можно до старта.</p>
+    </details>
     <p>После старта фишка появится на респе.</p>
     <form id="start-form" hidden>
       <button type="submit" class="primary" id="start">Начать матч · 12:00</button>
@@ -38,20 +48,21 @@
     <p id="winner" class="highlight" role="status"></p>
     <p id="control" class="highlight"></p>
     <p id="me" role="status"></p>
+    <meter id="health" min="0" max="100" value="100" aria-label="Здоровье" hidden></meter>
     <button id="practice-opponent" type="button" hidden>Отправить учебного соперника к Капле</button>
     <section id="combat" class="combat" hidden aria-labelledby="combat-title">
       <h2 id="combat-title">Бой</h2>
       <p id="combat-clock" class="highlight" role="status"></p>
       <p id="combat-score" class="fine"></p>
+      <p id="combat-lineup" class="fine"></p>
       <div class="combat-actions">
-        <button type="button" data-action="strike" aria-label="Удар">Удар<small>Срывает обман</small></button>
-        <button type="button" data-action="guard" aria-label="Блок">Блок<small>Держит удар</small></button>
-        <button type="button" data-action="feint" aria-label="Обман">Обман<small>Обходит блок</small></button>
+        <button type="button" id="combat-action" class="primary">Участвовать в бою</button>
       </div>
       <p id="combat-pick" role="status"></p>
       <p id="combat-result" class="fine"></p>
-      <p class="fine">Один приём за раунд. Быстрота клика не даёт бонуса. Ни одного приёма за бой — поражение, даже если союзники выиграли.</p>
-      <p class="fine">Для отступления выбери другую точку ниже или укажи цель инструментом «Бег».</p>
+      <p class="fine">Один клик каждые 3 с. Лишние и быстрые клики не усиливают действие. Два пропуска подряд — поражение.</p>
+      <button id="retreat" type="button">Отступить к своему респу</button>
+      <p class="fine">Можно уйти и к другой точке. За пределами круга ты больше не участвуешь в этом бою.</p>
     </section>
     <h2 id="points-heading">Точки</h2>
     <ul id="points" class="point-list">
@@ -72,5 +83,5 @@
   </section>
   <p id="notice" role="status" class="fine"></p>
 </main>
-<script type="module" src="./panel.mjs?v=0.3.1"></script>
+<script type="module" src="./panel.mjs?v=0.4.0"></script>
 </html>
