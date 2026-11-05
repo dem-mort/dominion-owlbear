@@ -7,6 +7,10 @@ export const POINT_NAMES = ["Трефа", "Капля", "Звезда"];
 export const SLOT = /^[КС][1-6](?= · )/u;
 export const WAVE_FIRST = 30;
 export const WAVE_INTERVAL = 120;
+export const ROUND_SECONDS = 5;
+export const COMBAT_ROUNDS = 3;
+export const ACTION_NAMES = { strike: "Удар", guard: "Блок", feint: "Обман" };
+const BEATS = { strike: "feint", guard: "strike", feint: "guard" };
 
 // Coordinates are in the reference board's units. Scale and translate against
 // the native point props when opening the scene.
@@ -59,7 +63,7 @@ export function newMatch(board, claims, routeSeconds, calibrated) {
       ...slot,
       position: { x: spawn.x + (index % 3 - 1) * 19 * board.scale, y: spawn.y + (index < 3 ? -10 : 10) * board.scale },
       claim: claims[slot.id] || null,
-      destination: null, deadUntil: 0, pet: false,
+      destination: null, deadUntil: 0, pet: false, deathReason: null,
     };
   }
   return {
@@ -68,6 +72,7 @@ export function newMatch(board, claims, routeSeconds, calibrated) {
     points: board.points.map(point => ({ ...point, team: null, progress: 0, capturing: null, clash: 0 })),
     pets: board.pets.map(pet => ({ ...pet, available: false, pickup: null, progress: 0 })),
     score: { red: 0, blue: 0 }, nextScore: 30, nextWave: WAVE_FIRST,
+    nextCombat: 0, combatRevision: 0,
     lastClash: null, winner: null,
   };
 }
@@ -82,34 +87,139 @@ function occupants(match, area) {
   return sides;
 }
 
-function resolveClash(match, point, sides, die) {
-  const pets = TEAMS.map(team => sides[team].find(pawn => pawn.pet));
-  const bonus = TEAMS.map((team, index) => 2 * sides[team].length + (pets[index] ? 2 : 0));
-  let rolls = [die(), die()];
-  let totals = rolls.map((roll, index) => roll + bonus[index]);
-  // A tied throw keeps the same participants and bonuses.
-  for (let attempt = 0; totals[0] === totals[1] && attempt < 20; attempt++) {
-    rolls = [die(), die()];
-    totals = rolls.map((roll, index) => roll + bonus[index]);
+function defeat(match, pawn, reason) {
+  pawn.deadUntil = match.elapsed + 25;
+  pawn.destination = null;
+  pawn.position = { ...match.board.spawn[pawn.team] };
+  pawn.pet = false;
+  pawn.deathReason = reason;
+}
+
+function openRound(match, combat, sides) {
+  combat.endsAt = match.elapsed + ROUND_SECONDS;
+  combat.choices = {};
+  combat.members = [...sides.red, ...sides.blue].map(pawn => {
+    if (!combat.fighters[pawn.id]) {
+      combat.fighters[pawn.id] = { team: pawn.team, actions: 0, missed: 0, pet: false };
+      pawn.destination = null;
+    }
+    return pawn.id;
+  });
+  match.combatRevision++;
+}
+
+export function combatForPawn(match, id) {
+  const pawn = match?.pawns[id];
+  if (!pawn || pawn.deadUntil) return null;
+  return [...match.points, ...match.pets].find(area =>
+    area.combat?.members.includes(id) && distance(pawn.position, area.position) <= area.radius,
+  )?.combat ?? null;
+}
+
+export function chooseCombatAction(match, id, combatId, round, action) {
+  if (!Object.hasOwn(ACTION_NAMES, action) || match?.winner) return false;
+  const combat = combatForPawn(match, id);
+  if (!combat || combat.id !== combatId || combat.round !== round ||
+      match.elapsed >= combat.endsAt - 1e-8 || combat.choices[id]) return false;
+  combat.choices[id] = action;
+  return true;
+}
+
+// Only completed choices are exposed. The current round publishes ready flags.
+export function combatViews(match) {
+  return [...match.points, ...match.pets].flatMap(area => {
+    const combat = area.combat;
+    if (!combat) return [];
+    const here = occupants(match, area);
+    const present = new Set([...here.red, ...here.blue].map(pawn => pawn.id));
+    return [{
+      id: combat.id, name: area.name, kind: combat.kind,
+      round: combat.round, endsAt: combat.endsAt, totals: [...combat.totals],
+      members: combat.members.filter(id => present.has(id)),
+      ready: Object.keys(combat.choices).filter(id => present.has(id)),
+      empowered: combat.members.filter(id => combat.fighters[id].pet),
+      previous: combat.history.at(-1) ?? null,
+    }];
+  });
+}
+
+function combatTick(match, area, sides, kind, die) {
+  if (!area.combat) {
+    if (!sides.red.length || !sides.blue.length) return false;
+    area.combat = {
+      id: area.id + "/" + ++match.nextCombat, kind, round: 1,
+      fighters: {}, history: [], totals: [0, 0],
+    };
+    openRound(match, area.combat, sides);
   }
-  if (totals[0] === totals[1]) return;
-  const winner = totals[0] > totals[1] ? "red" : "blue";
-  const loser = winner === "red" ? "blue" : "red";
-  match.lastClash = { point: point.name, winner, rolls, bonus, totals };
-  for (const pawn of pets) if (pawn) pawn.pet = false;
-  for (const pawn of sides[loser]) {
-    pawn.deadUntil = match.elapsed + 25;
-    pawn.destination = null;
-    pawn.position = { ...match.board.spawn[loser] };
-    pawn.pet = false;
+  const combat = area.combat;
+  if (match.elapsed < combat.endsAt - 1e-8) return true;
+
+  const participants = [...sides.red, ...sides.blue].filter(pawn => combat.members.includes(pawn.id));
+  const results = participants.map(pawn => {
+    const fighter = combat.fighters[pawn.id];
+    const action = combat.choices[pawn.id] ?? null;
+    if (!action) {
+      fighter.missed++;
+      return { id: pawn.id, team: pawn.team, action: null, roll: 0, tactic: 0, pet: 0, total: 0 };
+    }
+    fighter.actions++;
+    if (pawn.pet) { fighter.pet = true; pawn.pet = false; }
+    const enemies = participants.filter(other => other.team !== pawn.team && combat.choices[other.id]);
+    const wins = enemies.filter(other => BEATS[action] === combat.choices[other.id]).length;
+    const losses = enemies.filter(other => BEATS[combat.choices[other.id]] === action).length;
+    const roll = die();
+    const tactic = wins > losses ? 2 : 0;
+    const pet = fighter.pet ? 2 : 0;
+    return { id: pawn.id, team: pawn.team, action, roll, tactic, pet, total: roll + 2 + tactic + pet };
+  });
+  const totals = TEAMS.map(team => results.filter(result => result.team === team).reduce((sum, result) => sum + result.total, 0));
+  combat.totals = combat.totals.map((total, index) => total + totals[index]);
+  combat.history.push({ round: combat.round, results, totals });
+
+  const full = combat.round === COMBAT_ROUNDS;
+  if (!full && sides.red.length && sides.blue.length) {
+    combat.round++;
+    openRound(match, combat, sides);
+    return true;
   }
+
+  let winner = !sides.red.length && !sides.blue.length ? "draw"
+    : !sides.red.length ? "blue" : !sides.blue.length ? "red"
+      : combat.totals[0] === combat.totals[1] ? "draw"
+        : combat.totals[0] > combat.totals[1] ? "red" : "blue";
+  let tiebreak = null;
+  if (winner === "draw" && combat.totals[0] > 0 && sides.red.length && sides.blue.length) {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      tiebreak = [die(), die()];
+      if (tiebreak[0] !== tiebreak[1]) {
+        winner = tiebreak[0] > tiebreak[1] ? "red" : "blue";
+        break;
+      }
+    }
+  }
+  const inactive = [];
+  for (const pawn of [...sides.red, ...sides.blue]) {
+    const fighter = combat.fighters[pawn.id];
+    if (!fighter) continue; // Reinforcements enter only at a new full round.
+    if (full && fighter.actions === 0) {
+      inactive.push(pawn.id);
+      defeat(match, pawn, "inactive");
+    } else if (winner !== "draw" && pawn.team !== winner) defeat(match, pawn, "combat");
+  }
+  match.lastClash = { point: area.name, kind, winner, totals: combat.totals, tiebreak, rounds: combat.history, inactive };
+  area.combat = null;
+  match.combatRevision++;
+  return true;
 }
 
 export function tick(match, elapsed, die = () => 1 + Math.floor(Math.random() * 6)) {
   if (match.winner || elapsed <= 0) return;
   match.elapsed = Math.min(TOTAL, match.elapsed + elapsed);
   for (const pawn of Object.values(match.pawns)) {
-    if (pawn.deadUntil && match.elapsed >= pawn.deadUntil) pawn.deadUntil = 0;
+    if (pawn.deadUntil && match.elapsed >= pawn.deadUntil) { pawn.deadUntil = 0; pawn.deathReason = null; }
+    if (match.practice && pawn.bot && !pawn.deadUntil && !pawn.destination && !combatForPawn(match, pawn.id) &&
+        distance(pawn.position, match.points[1].position) > 0.1) pawn.destination = { ...match.points[1].position };
     if (!pawn.deadUntil && pawn.destination) {
       pawn.position = advance(pawn.position, pawn.destination, match.speed, elapsed);
       if (distance(pawn.position, pawn.destination) < 0.01) pawn.destination = null;
@@ -117,15 +227,7 @@ export function tick(match, elapsed, die = () => 1 + Math.floor(Math.random() * 
   }
   for (const point of match.points) {
     const sides = occupants(match, point);
-    if (sides.red.length && sides.blue.length) {
-      point.clash += elapsed;
-      if (point.clash >= 15) {
-        resolveClash(match, point, sides, die);
-        point.clash = 0;
-      }
-      continue;
-    }
-    point.clash = 0;
+    if (combatTick(match, point, sides, "point", die)) continue;
     const team = sides.red.length ? "red" : sides.blue.length ? "blue" : null;
     if (!team || team === point.team || point.capturing !== team) {
       point.progress = 0;
@@ -143,8 +245,9 @@ export function tick(match, elapsed, die = () => 1 + Math.floor(Math.random() * 
     for (const pet of match.pets) pet.available = true;
   }
   for (const pet of match.pets) {
-    if (!pet.available) continue;
     const sides = occupants(match, pet);
+    if (combatTick(match, pet, sides, "pet", die)) { pet.progress = 0; pet.pickup = null; continue; }
+    if (!pet.available) continue;
     const candidate = sides.red.length && sides.blue.length
       ? null : [...sides.red, ...sides.blue].find(pawn => !pawn.pet);
     if (!candidate || candidate.id !== pet.pickup) {
@@ -158,6 +261,14 @@ export function tick(match, elapsed, die = () => 1 + Math.floor(Math.random() * 
       pet.available = false;
       pet.pickup = null;
       pet.progress = 0;
+    }
+  }
+  if (match.practice) {
+    for (const pawn of Object.values(match.pawns).filter(pawn => pawn.bot)) {
+      const combat = combatForPawn(match, pawn.id);
+      if (combat && match.elapsed >= combat.endsAt - 3) {
+        chooseCombatAction(match, pawn.id, combat.id, combat.round, ["strike", "guard", "feint"][combat.round - 1]);
+      }
     }
   }
   if (match.elapsed >= match.nextScore) {

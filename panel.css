@@ -35,3 +35,9 @@ ul { margin: 2px 0 6px; padding-left: 18px; }
 .point-list li { display: grid; grid-template-columns: 75px 1fr; align-items: center; gap: 8px; margin: 4px 0; }
 .point-list button { padding: 3px 4px; }
 .fine { color: #bfd0dc; font-size: 12px; }
+.combat { border: 1px solid #dfad6d; background: #342e2a; border-radius: 9px; padding: 9px; margin: 10px 0; }
+.combat h2 { margin-top: 0; color: #ffd6a8; }
+.combat-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.combat-actions button { padding: 9px 3px; font-weight: 700; }
+.combat-actions small { display: block; font-size: 10px; font-weight: 400; margin-top: 3px; }
+.combat-actions button[aria-pressed="true"] { opacity: 1; }

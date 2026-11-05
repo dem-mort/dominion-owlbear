@@ -1,4 +1,4 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick } from "./rules.mjs";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, chooseCombatAction, combatViews } from "./rules.mjs?v=0.3.0";
 import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs";
 
 const command = NS + "/command";
@@ -30,15 +30,28 @@ export async function initialize(OBR) {
   let lastTick = 0;
   let lastPublish = -Infinity;
   let lastItemSync = -Infinity;
+  let lastCombatRevision = -1;
   let publishedItems = new Map();
   let sceneItems = [];
   let sceneReady = false;
   let lastWarning = -Infinity;
+  let announcedCombat = null;
   const vision = createLocalVision(OBR, connection, role, fail);
+
+  function updateLocal() {
+    vision.update(state, sceneItems, sceneReady);
+    const mine = state?.slots.find(slot => state.claims[slot.id]?.connection === connection)?.id;
+    const combat = state?.phase === "playing" && state.combats?.find(fight => fight.members.includes(mine));
+    if (combat && combat.id !== announcedCombat) {
+      announcedCombat = combat.id;
+      void OBR.action.open().catch(fail);
+    }
+    if (!combat) announcedCombat = null;
+  }
 
   OBR.room.onMetadataChange(metadata => {
     state = metadata[stateKey];
-    vision.update(state, sceneItems, sceneReady);
+    updateLocal();
   });
   state = (await OBR.room.getMetadata())[stateKey];
 
@@ -56,18 +69,21 @@ export async function initialize(OBR) {
     if (match) {
       Object.assign(snapshot, {
         elapsed: match.elapsed, winner: match.winner, score: { ...match.score },
-        nextWave: match.nextWave, lastClash: match.lastClash,
+        nextWave: match.nextWave,
+        lastClash: match.lastClash && { ...match.lastClash, rounds: undefined },
+        combats: combatViews(match), practice: Boolean(match.practice), practiceOpponent: Boolean(match.practiceOpponent),
         routeSeconds: match.routeSeconds, calibrated: match.calibrated,
         sightRadius: SIGHT_RADIUS * board.scale,
         points: match.points.map(({ name, team, clash, progress, capturing }) => ({ name, team, clash, progress, capturing })),
-        pets: match.pets.map(({ name, available }) => ({ name, available })),
+        pets: match.pets.map(({ name, available, combat }) => ({ name, available, fighting: Boolean(combat) })),
         pawns: Object.fromEntries(Object.values(match.pawns)
           .filter(pawn => pawn.claim)
-          .map(({ id, pet, deadUntil, destination }) => [id, { pet, deadUntil, moving: Boolean(destination) }])),
+          .map(({ id, pet, deadUntil, destination, deathReason }) => [id, { pet, deadUntil, deathReason, moving: Boolean(destination) }])),
       });
+      lastCombatRevision = match.combatRevision;
     }
     state = snapshot;
-    vision.update(state, sceneItems, sceneReady);
+    updateLocal();
     await OBR.room.setMetadata({ [stateKey]: snapshot });
   }
 
@@ -122,7 +138,7 @@ export async function initialize(OBR) {
     const items = ready ? await OBR.scene.items.getItems() : [];
     sceneReady = ready;
     sceneItems = items;
-    vision.update(state, sceneItems, sceneReady);
+    updateLocal();
     const loaded = readBoard(items.map(originalItem));
     board = loaded;
     if (!host || (previous && previous.key === loaded?.key)) return;
@@ -176,13 +192,18 @@ export async function initialize(OBR) {
   await loadBoard(await OBR.scene.isReady());
   OBR.scene.items.onChange(items => {
     sceneItems = items;
-    vision.update(state, sceneItems, sceneReady);
+    updateLocal();
   });
 
   if (host) {
     OBR.broadcast.onMessage(command, ({ connectionId, data }) => {
       if (!data || !board || state?.host !== connection || data.board !== board.key) return;
       const local = connectionId === connection;
+      if (data.type === "combat-action") {
+        if (match?.pawns[data.id]?.claim?.connection !== connectionId) return;
+        chooseCombatAction(match, data.id, data.combat, data.round, data.action);
+        return;
+      }
       if (data.type === "move" || data.type === "move-to-point") {
         const pawn = match?.pawns[data.id];
         if (!pawn || match.winner || pawn.deadUntil || pawn.claim?.connection !== connectionId) return;
@@ -226,6 +247,15 @@ export async function initialize(OBR) {
           publishedItems.clear();
           await syncItems(true);
           await publish();
+        } else if (data.type === "practice-opponent" && local && match?.practice && !match.winner && !match.practiceOpponent) {
+          const slot = board.slots.find(slot => slot.name.startsWith("С1 · "));
+          const claim = { connection: NS + "/practice-bot", name: "Учебный" };
+          claims[slot.id] = claim;
+          match.pawns[slot.id].claim = claim;
+          match.pawns[slot.id].bot = true;
+          match.pawns[slot.id].destination = { ...match.points[1].position };
+          match.practiceOpponent = true;
+          await publish();
         } else if (data.type === "lobby" && local && match) {
           await returnToLobby();
         }
@@ -246,7 +276,8 @@ export async function initialize(OBR) {
         lastTick = now;
         tick(match, elapsed);
         await syncItems();
-        if (match.winner || now - lastPublish >= 1) await publish();
+        if (match.winner || now - lastPublish >= 1 ||
+            (match.combatRevision !== lastCombatRevision && now - lastPublish >= 0.4)) await publish();
       } catch (error) {
         fail(error);
       } finally {
