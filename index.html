@@ -3,85 +3,84 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Доминион</title>
-<link rel="stylesheet" href="./panel.css?v=0.4.0">
-<main>
-  <header>
-    <div class="eyebrow">ДОМИНИОН · 6×6</div>
-    <h1>Осколок Силы</h1>
+<link rel="stylesheet" href="./panel.css?v=0.5.0">
+<main class="app">
+  <header class="app-header">
+    <div><div class="eyebrow">ДОМИНИОН / 6×6</div><h1>Осколок Силы</h1></div>
+    <span id="phase" class="badge">Подключение</span>
   </header>
-  <section id="loading" role="status">Открываю сцену…</section>
-  <section id="lobby" hidden>
-    <button type="button" class="primary" id="practice" hidden>Попробовать одному за К1</button>
-    <h2>Выбор фишки для матча</h2>
-    <p>Занято <strong id="count">0</strong> из 12</p>
-    <div class="teams">
-      <div><h3 class="red">Красные</h3><div id="red-slots" class="slots"></div></div>
-      <div><h3 class="blue">Синие</h3><div id="blue-slots" class="slots"></div></div>
-    </div>
-    <p id="picked" role="status"></p>
-    <section id="own-aspect" hidden>
-      <label for="aspect">Мой аспект на этот матч</label>
-      <select id="aspect"></select>
-      <p id="aspect-help" class="fine"></p>
-    </section>
-    <details id="team-aspects" hidden>
-      <summary>Аспекты команд · настройка ведущего</summary>
-      <div id="aspect-lineup"></div>
-      <p class="fine">ДД наносит урон. САП усиливает активных ДД. ХИЛ восстанавливает здоровье. Менять можно до старта.</p>
-    </details>
-    <p>После старта фишка появится на респе.</p>
-    <form id="start-form" hidden>
-      <button type="submit" class="primary" id="start">Начать матч · 12:00</button>
-      <details>
-        <summary>Настроить скорость бега</summary>
-        <label for="route">Сколько секунд в игре от красного респа до центра Капли?</label>
-        <input id="route" name="route" type="number" min="2" max="90" step="0.1" inputmode="decimal" placeholder="Пробный темп · 10 с">
-      </details>
-    </form>
-  </section>
-  <section id="playing" hidden>
-    <div class="scoreboard" aria-label="Счёт матча">
-      <div class="red"><span>Красные</span><strong id="red-score">0</strong></div>
-      <time id="timer">12:00</time>
-      <div class="blue"><span>Синие</span><strong id="blue-score">0</strong></div>
-    </div>
-    <p id="winner" class="highlight" role="status"></p>
-    <p id="control" class="highlight"></p>
-    <p id="me" role="status"></p>
-    <meter id="health" min="0" max="100" value="100" aria-label="Здоровье" hidden></meter>
-    <button id="practice-opponent" type="button" hidden>Отправить учебного соперника к Капле</button>
-    <section id="combat" class="combat" hidden aria-labelledby="combat-title">
-      <h2 id="combat-title">Бой</h2>
-      <p id="combat-clock" class="highlight" role="status"></p>
-      <p id="combat-score" class="fine"></p>
-      <p id="combat-lineup" class="fine"></p>
-      <div class="combat-actions">
-        <button type="button" id="combat-action" class="primary">Участвовать в бою</button>
+  <section id="loading" class="empty-state" role="status"><span class="loading-dot"></span><h2>Открываю сцену…</h2><p id="loading-help">Подключаемся к комнате Owlbear.</p></section>
+  <section id="lobby" class="screen" hidden aria-label="Подготовка матча">
+    <div class="screen-body">
+      <div class="section-heading"><h2><span class="step">1</span> Выбери персонажа</h2><span class="muted"><b id="count">0</b>/12</span></div>
+      <div class="team-tabs" role="tablist" aria-label="Команда">
+        <button id="tab-red" type="button" role="tab" aria-controls="red-team" aria-selected="true" class="red">Красные <span id="red-count">0/6</span></button>
+        <button id="tab-blue" type="button" role="tab" aria-controls="blue-team" aria-selected="false" class="blue" tabindex="-1">Синие <span id="blue-count">0/6</span></button>
       </div>
-      <p id="combat-pick" role="status"></p>
-      <p id="combat-result" class="fine"></p>
-      <p class="fine">Один клик каждые 3 с. Лишние и быстрые клики не усиливают действие. Два пропуска подряд — поражение.</p>
-      <button id="retreat" type="button">Отступить к своему респу</button>
-      <p class="fine">Можно уйти и к другой точке. За пределами круга ты больше не участвуешь в этом бою.</p>
-    </section>
-    <h2 id="points-heading">Точки</h2>
-    <ul id="points" class="point-list">
-      <li><button type="button" data-point="Трефа">Трефа</button><span></span></li>
-      <li><button type="button" data-point="Капля">Капля</button><span></span></li>
-      <li><button type="button" data-point="Звезда">Звезда</button><span></span></li>
-    </ul>
-    <p id="free-move" class="fine" hidden>Для свободного движения выбери «Бег» справа и кликни по карте или веди фишку мышью.</p>
-    <p class="fine">Союзники видны всегда. Противники появляются рядом, в пределах диаметра круга захвата.</p>
-    <p id="pets"></p>
-    <p id="clash"></p>
-    <p id="pace" class="fine"></p>
-    <button id="restart" class="primary" hidden>Вернуться в лобби</button>
-    <details id="stop" hidden>
-      <summary>Управление матчем</summary>
-      <button id="stop-match" type="button">Остановить матч и вернуться в лобби</button>
-    </details>
+      <div id="red-team" role="tabpanel" aria-labelledby="tab-red"><div id="red-slots" class="slots"></div></div>
+      <div id="blue-team" role="tabpanel" aria-labelledby="tab-blue" hidden><div id="blue-slots" class="slots"></div></div>
+      <section id="selection" class="selection-card" aria-labelledby="selection-heading">
+        <h2 id="selection-heading"><span class="step">2</span> Твой персонаж</h2>
+        <p id="picked" role="status">Нажми на свободную карточку выше.</p>
+        <fieldset id="own-aspect" hidden><legend>Аспект</legend><div id="aspect-options" class="aspect-options" role="group" aria-label="Аспект персонажа"></div><p id="aspect-help" class="fine"></p></fieldset>
+        <button type="button" id="release" class="text-button" hidden>Освободить фишку</button>
+      </section>
+      <details id="host-settings" class="disclosure" hidden>
+        <summary>Настройки ведущего</summary>
+        <div id="team-aspects"><h3>Аспекты команд</h3><div id="aspect-lineup"></div></div>
+        <label for="route">Бег от красного респа до Капли, с</label>
+        <input id="route" name="route" type="number" min="2" max="90" step="0.1" inputmode="decimal" placeholder="10 — пробный темп">
+        <p class="fine">Укажи игровой замер, если он есть.</p>
+      </details>
+    </div>
+    <footer class="lobby-footer">
+      <p id="start-help" class="fine" role="status"></p>
+      <form id="start-form" hidden><button type="submit" class="primary" id="start" disabled>Начать матч <span>12:00</span></button></form>
+      <button type="button" class="secondary" id="practice" hidden>Тренировка одному <span>за К1</span></button>
+      <p id="waiting-host" class="waiting-host" hidden>Ждём старта от ведущего</p>
+    </footer>
   </section>
-  <p id="notice" role="status" class="fine"></p>
+  <section id="playing" class="screen" hidden aria-label="Матч">
+    <div class="scoreboard" aria-label="Счёт матча">
+      <div class="score red"><span>Красные</span><strong id="red-score">0</strong></div>
+      <div class="match-clock"><span>ДО 1000</span><time id="timer">12:00</time></div>
+      <div class="score blue"><span>Синие</span><strong id="blue-score">0</strong></div>
+    </div>
+    <div id="play-scroll" class="screen-body play-body">
+      <section id="winner-card" class="winner-card" hidden><h2 id="winner" role="status"></h2><p class="fine">Матч завершён</p><button id="restart" type="button" class="primary" hidden>Вернуться в лобби</button></section>
+      <section id="player-card" class="player-card" aria-label="Твой персонаж">
+        <div class="player-heading"><div><h2 id="me"></h2><p id="player-state" class="fine"></p></div><span id="pet-charge" class="badge amber" hidden>Баф +20%</span></div>
+        <div id="health-row" class="health-row" hidden><meter id="health" min="0" max="100" value="100" aria-label="Здоровье"></meter><span id="health-label">100/100</span></div>
+        <p id="control" class="next-action" role="status"></p>
+      </section>
+      <section id="combat" class="combat" hidden aria-labelledby="combat-title">
+        <div class="combat-heading"><div><span class="eyebrow">СТЫЧКА</span><h2 id="combat-title">Бой</h2></div><div class="combat-countdown"><b id="combat-seconds">3</b><span>сек</span></div></div>
+        <div class="round-line"><span id="combat-clock"></span><span id="combat-round"></span></div>
+        <progress id="combat-progress" max="3" value="3" aria-label="Время на действие"></progress>
+        <div id="combat-lineup" class="combat-lineup" aria-label="Состав команд"></div>
+        <p id="combat-pick" class="combat-pick" role="status"></p>
+        <button type="button" id="combat-action" class="combat-action">Атаковать</button>
+        <p class="combat-rule">Один клик на отсчёт · скорость клика не важна</p>
+        <p id="combat-result" class="combat-result"></p>
+        <button id="retreat" type="button" class="retreat">Отступить <span>к своему респу →</span></button>
+      </section>
+      <section class="destinations" aria-labelledby="points-heading">
+        <div class="section-heading"><h2 id="points-heading">Куда бежать?</h2><span id="move-label" class="fine">Нажми точку</span></div>
+        <ul id="points" class="point-list">
+          <li><button type="button" data-point="Трефа"><span class="point-symbol" aria-hidden="true">♣</span><span class="point-info"><b>Трефа</b><span class="point-status">Свободна</span></span><span class="point-arrow" aria-hidden="true">→</span></button></li>
+          <li><button type="button" data-point="Капля"><svg class="point-symbol" viewBox="0 0 24 28" aria-hidden="true"><path d="M12 1C10 7 3 14 3 19a9 9 0 0 0 18 0c0-5-7-12-9-18Z"/></svg><span class="point-info"><b>Капля</b><span class="point-status">Свободна</span></span><span class="point-arrow" aria-hidden="true">→</span></button></li>
+          <li><button type="button" data-point="Звезда"><span class="point-symbol" aria-hidden="true">★</span><span class="point-info"><b>Звезда</b><span class="point-status">Свободна</span></span><span class="point-arrow" aria-hidden="true">→</span></button></li>
+        </ul>
+        <p id="free-move" class="fine" hidden>Свободный маршрут: инструмент «Бег» на карте.</p>
+      </section>
+      <section class="pet-card"><div class="section-heading"><h3>Баф питомца</h3><span class="amber">+20% · 1 бой</span></div><p id="pets"></p><p class="fine">На лапе карты · 5 с без врагов</p></section>
+      <p id="clash" class="clash" role="status" hidden></p>
+      <button id="practice-opponent" class="secondary practice-opponent" type="button" hidden>Добавить соперника к Капле</button>
+      <details class="disclosure"><summary>Детали матча</summary><p id="pace" class="fine"></p><p class="fine">Союзники видны всегда. Враги появляются рядом.</p><p class="fine">Два пропуска действий подряд — поражение. После смерти: 25 с на своём респе.</p><p id="combat-score" class="fine"></p></details>
+      <details id="stop" class="disclosure" hidden><summary>Управление матчем</summary><button id="stop-match" type="button" class="danger">Остановить матч</button><p class="fine">Все вернутся в лобби, счёт обнулится.</p></details>
+    </div>
+  </section>
+  <p id="notice" role="status" class="notice" hidden></p>
 </main>
-<script type="module" src="./panel.mjs?v=0.4.0"></script>
+<script type="module" src="./panel.mjs?v=0.5.0"></script>
 </html>
