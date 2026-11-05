@@ -1,10 +1,14 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.7.1";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.7.1";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.7.1";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.8.0";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.8.0";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.8.0";
+import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.8.0";
 
 const command = NS + "/command";
 const tool = NS + "/run";
 const mode = tool + "/drag";
+const battleTool = NS + "/combat-target";
+const battleMode = battleTool + "/tap";
+const battleIcon = new URL("./target.svg", import.meta.url).href;
 const icon = new URL("./run.svg", import.meta.url).href;
 const clock = () => performance.now() / 1000;
 const stateKey = NS + "/state";
@@ -37,6 +41,7 @@ export async function initialize(OBR, Command) {
   let lastPublish = -Infinity;
   let lastItemSync = -Infinity;
   let lastCombatRevision = -1;
+  let combatDirty = false;
   let publishedItems = new Map();
   let sceneItems = [];
   let sceneReady = false;
@@ -44,6 +49,11 @@ export async function initialize(OBR, Command) {
   let lastWarning = -Infinity;
   let announcedCombats = new Set();
   let repairQueued = false;
+  let battleToolReady = false;
+  let targetFight = null;
+  let previousTool = null;
+  let toolTransition = Promise.resolve();
+  const sentTargets = new Set();
   const vision = createLocalVision(OBR, connection, role, fail, Command);
 
   function updateLocal() {
@@ -52,6 +62,31 @@ export async function initialize(OBR, Command) {
     const fights = sceneReady && state?.phase === "playing" ? (state.combats ?? []).filter(fight => fight.members.some(id => mine.has(id))) : [];
     if (fights.some(fight => !announcedCombats.has(fight.id))) void OBR.action.open().catch(fail);
     announcedCombats = new Set(fights.map(fight => fight.id));
+    const target = mapTarget(state, connection);
+    for (const key of sentTargets) if (key !== target?.key) sentTargets.delete(key);
+    syncBattleTool(target);
+  }
+
+  async function focusBattleTool() {
+    if (!battleToolReady || !mapTarget(state, connection) || typeof OBR.tool.activateTool !== "function") return;
+    const current = typeof OBR.tool.getActiveTool === "function" ? await OBR.tool.getActiveTool() : null;
+    if (!mapTarget(state, connection)) return;
+    if (current && current !== battleTool) previousTool = current;
+    await OBR.tool.activateTool(battleTool);
+  }
+  function syncBattleTool(target) {
+    if (!battleToolReady || targetFight === (target?.combat ?? null)) return;
+    targetFight = target?.combat ?? null;
+    const currentFight = targetFight;
+    toolTransition = toolTransition.then(async () => {
+      if (targetFight !== currentFight) return;
+      if (currentFight) await focusBattleTool();
+      else if (previousTool && typeof OBR.tool.getActiveTool === "function" && typeof OBR.tool.activateTool === "function") {
+        const restore = previousTool;
+        previousTool = null;
+        if (await OBR.tool.getActiveTool() === battleTool && !mapTarget(state, connection)) await OBR.tool.activateTool(restore);
+      }
+    }).catch(fail);
   }
 
   const controls = () => ({ slots: board?.slots ?? [], claims, controlMode, active, selections });
@@ -121,9 +156,11 @@ export async function initialize(OBR, Command) {
     lastPublish = clock();
     normalizeSelection();
     const snapshot = {
-      rules: "0.7.1",
+      rules: "0.8.0",
       board: board.key, host: connection,
       epoch: (state?.board === board.key ? epochOf(state) : 0) + (acquire ? 1 : 0),
+      boardScale: board.scale,
+      actionSeconds: match?.stepSeconds ?? (controlMode === "individual" && Object.keys(claims).length === 12 && new Set(Object.values(claims).map(claim => claim.connection)).size === 12 ? 1 : 3),
       slots: board.slots.map(({ id, name, team }) => ({ id, name, team })),
       claims: { ...claims }, aspects: { ...aspects }, controlMode, active: { ...active }, selections: plainCopy(selections),
       phase: !match ? "lobby" : preparation ? "preparing" : match.winner ? "finished" : "playing",
@@ -148,6 +185,7 @@ export async function initialize(OBR, Command) {
           .map(({ id, pet, deadUntil, destination, deathReason, hp, aspect, retreating }) => [id, { pet, deadUntil, deathReason, hp: Math.round(hp), aspect, retreating, moving: Boolean(destination) }])),
       });
       lastCombatRevision = match.combatRevision;
+      combatDirty = false;
     }
     state = snapshot;
     updateLocal();
@@ -312,8 +350,9 @@ export async function initialize(OBR, Command) {
     updateLocal();
   });
 
-  if (host) {
-    OBR.broadcast.onMessage(command, ({ connectionId, data }) => {
+  OBR.broadcast.onMessage(command, ({ connectionId, data }) => {
+      if (connectionId === connection && data?.type === "focus-combat") { void focusBattleTool().catch(fail); return; }
+      if (!host) return;
       if (!sceneReady || !data || !board || data.board !== board.key) return;
       const local = connectionId === connection;
       if (data.type === "recover-lobby") {
@@ -359,14 +398,18 @@ export async function initialize(OBR, Command) {
         const cols = Math.ceil(Math.sqrt(count)), rows = Math.ceil(count / cols), gap = 18 * board.scale;
         return { x: (index % cols - (cols - 1) / 2) * gap, y: (Math.floor(index / cols) - (rows - 1) / 2) * gap };
       };
-      if (data.type === "combat-click") {
+      if (data.type === "combat-click" || data.type === "combat-target") {
         if (!match || preparation || match.winner) return;
         if (data.id !== undefined && match.pawns[data.id]?.claim?.connection !== connectionId) return;
         const combat = combatViews(match).find(fight => fight.id === data.combat);
         if (!combat || combat.round !== data.round) return;
+        if (match.stepSeconds === 1) {
+          if (data.type !== "combat-target" || !combat.members.includes(data.id) ||
+              data.epoch !== state.epoch || !hitTarget(targetPosition(combat, data.id, board.scale), data.position)) return;
+        } else if (data.type === "combat-target") return;
         if (data.ids !== undefined && (!commandIds().length || data.ids.some(id => !combat.members.includes(id)))) return;
         const members = controlMode === "individual" ? [data.id] : combat.members.filter(id => match.pawns[id]?.claim?.connection === connectionId);
-        for (const id of members) if (match.pawns[id]?.claim?.connection === connectionId) combatClick(match, id, data.combat, data.round);
+        for (const id of members) if (match.pawns[id]?.claim?.connection === connectionId && combatClick(match, id, data.combat, data.round)) combatDirty = true;
         return;
       }
       if (data.type === "retreat") {
@@ -454,6 +497,8 @@ export async function initialize(OBR, Command) {
           const calibrated = Number.isFinite(data.routeSeconds) && data.routeSeconds >= 2 && data.routeSeconds <= 90;
           match = newMatch(board, claims, calibrated ? data.routeSeconds : DEFAULT_ROUTE_SECONDS, calibrated);
           match.practice = practice;
+          match.stepSeconds = !practice && controlMode === "individual" && claimCount === 12 &&
+            new Set(Object.values(claims).map(claim => claim.connection)).size === 12 ? 1 : 3;
           preparation = practice ? null : { remaining: 60, ready: new Set() };
           lastTick = clock();
           publishedItems.clear();
@@ -476,6 +521,7 @@ export async function initialize(OBR, Command) {
       if (pending.length < 48) pending.push(manage);
     });
 
+  if (host) {
     setInterval(async () => {
       if (busy || !sceneReady || !board) return;
       busy = true;
@@ -496,8 +542,9 @@ export async function initialize(OBR, Command) {
         tick(match, elapsed);
         await syncItems();
         if (!match || state?.host !== connection) return;
+        const combatPublishGap = match.stepSeconds === 1 ? 0.25 : 0.4;
         if (match.winner || now - lastPublish >= 1 ||
-            (match.combatRevision !== lastCombatRevision && now - lastPublish >= 0.4)) await publish();
+            ((combatDirty || match.combatRevision !== lastCombatRevision) && now - lastPublish >= combatPublishGap)) await publish();
       } catch (error) {
         fail(error);
       } finally {
@@ -555,4 +602,21 @@ export async function initialize(OBR, Command) {
     onToolDragCancel: cancelDrag,
     onDeactivate: cancelDrag,
   });
+  await OBR.tool.create({ id: battleTool, defaultMode: battleMode, icons: [{ icon: battleIcon, label: "Бой · нажми цель на карте" }] });
+  await OBR.tool.createMode({
+    id: battleMode,
+    icons: [{ icon: battleIcon, label: "Нажми светящийся круг", filter: { activeTools: [battleTool] } }],
+    cursors: [{ cursor: "crosshair", filter: { activeTools: [battleTool] } }],
+    onToolDown(_context, event) {
+      const target = sceneReady && mapTarget(state, connection);
+      if (!target || target.ready || sentTargets.has(target.key) || !hitTarget(target, event.pointerPosition)) return;
+      sentTargets.add(target.key);
+      void OBR.broadcast.sendMessage(command, { type: "combat-target", board: state.board, host: state.host, epoch: state.epoch,
+        id: target.id, combat: target.combat, round: target.round, position: { ...event.pointerPosition } }, { destination: "ALL" })
+        .catch(error => { sentTargets.delete(target.key); fail(error); });
+    },
+    onToolClick() { return false; },
+  });
+  battleToolReady = true;
+  updateLocal();
 }

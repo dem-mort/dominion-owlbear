@@ -1,5 +1,5 @@
-import { createPanel } from "./panel-ui.mjs?v=0.7.1";
-import { modeOf, ownedIds, claimTargetIds, canStart } from "./control.mjs?v=0.7.1";
+import { createPanel } from "./panel-ui.mjs?v=0.8.0";
+import { modeOf, ownedIds, claimTargetIds, canStart } from "./control.mjs?v=0.8.0";
 const classes = ["Воин", "Храмовник", "Разведчик", "Жрец", "Маг", "Бард"];
 const slots = ["К", "С"].flatMap(prefix => classes.map((name, index) => ({ id: prefix + (index + 1), name: prefix + (index + 1) + " · " + name, team: prefix === "К" ? "red" : "blue" })));
 const aspects = Object.fromEntries(slots.map(slot => [slot.id, slot.name.endsWith("Жрец") ? "heal" : slot.name.endsWith("Бард") ? "support" : "attack"]));
@@ -8,7 +8,8 @@ const mine = "К4";
 const picked = () => ({ [mine]: { connection: "local", name: "Игрок" }, С1: { connection: "other", name: "Александр" } });
 const ownerClaims = mode => Object.fromEntries(slots.map(slot => [slot.id, { connection: mode === "solo" || slot.team === "red" ? "local" : "other", name: slot.team === "red" || mode === "solo" ? "Игрок" : "Соперник" }]));
 function addMatch(state) {
-  Object.assign(state, { elapsed: 123, score: { red: 380, blue: 420 }, nextWave: 150, routeSeconds: 10, calibrated: false,
+  const fullIndividual = modeOf(state) === "individual" && Object.keys(state.claims).length === 12 && new Set(Object.values(state.claims).map(claim => claim.connection)).size === 12;
+  Object.assign(state, { elapsed: 123, score: { red: 380, blue: 420 }, nextWave: 150, routeSeconds: 10, calibrated: false, actionSeconds: fullIndividual && !state.practice ? 1 : 3,
     points: [{ name: "Трефа", team: "red" }, { name: "Капля", team: "blue" }, { name: "Звезда", team: null }],
     pets: [{ name: "Б1", available: true }, { name: "Б2", available: false }, { name: "Б3", available: false }],
     pawns: Object.fromEntries(Object.keys(state.claims).map(id => [id, { hp: 76, aspect: state.aspects[id], pet: id === mine, moving: false, deadUntil: 0 }])), combats: [] });
@@ -18,7 +19,7 @@ function makeState(scenario) {
   const lobby = ["lobby", "selected", "player", "teams-lobby", "teams-ready", "solo-lobby", "solo-ready"].includes(scenario);
   const empty = ["lobby", "teams-lobby", "solo-lobby"].includes(scenario);
   const claims = empty ? {} : mode === "individual" ? picked() : ownerClaims(mode);
-  const state = { rules: "0.7.1", board: "preview", host: scenario === "player" ? "other" : "local", slots, aspects: { ...aspects }, controlMode: mode,
+  const state = { rules: "0.8.0", board: "preview", host: scenario === "player" ? "other" : "local", slots, aspects: { ...aspects }, controlMode: mode,
     active: empty ? {} : { local: mine }, selections: empty ? {} : { local: [mine] }, claims, phase: lobby ? "lobby" : scenario === "finished" ? "finished" : "playing" };
   if (!lobby) addMatch(state);
   if (scenario.includes("preparing")) {
@@ -32,7 +33,18 @@ function makeState(scenario) {
   if (scenario.endsWith("-recovery")) state.host = "other";
   if (scenario === "moving") state.pawns[mine].moving = true;
   if (scenario === "dead") { state.pawns[mine].deadUntil = 146; state.pawns[mine].deathReason = "inactive"; }
-  const fight = (id, name, members) => ({ id, name, kind: "point", round: 2, endsAt: 126, members, numbers: [2, 2], counts: [{ attack: 1, support: 0, heal: 1 }, { attack: 1, support: 1, heal: 0 }], ready: [], empowered: members.includes(mine) ? [mine] : [], previous: null });
+  if (["pet-carrier", "pet-dd"].includes(scenario)) {
+    const own = scenario === "pet-dd" ? "К1" : mine;
+    state.claims = Object.fromEntries(slots.map(slot => [slot.id, { connection: slot.id === own ? "local" : "player-" + slot.id, name: slot.name }]));
+    state.active.local = own; state.selections.local = [own]; addMatch(state);
+  }
+  const fight = (id, name, members) => {
+    const carriers = members.filter(id => state.pawns[id]?.pet);
+    const teams = new Set(carriers.map(id => slots.find(slot => slot.id === id)?.team));
+    return { id, name, kind: "point", round: 2, endsAt: state.elapsed + state.actionSeconds, stepSeconds: state.actionSeconds, roundLimit: 15 / state.actionSeconds,
+      members, numbers: [2, 2], counts: [{ attack: 1, support: 0, heal: 1 }, { attack: 1, support: 1, heal: 0 }], ready: [], carriers,
+      empowered: members.filter(id => state.pawns[id]?.aspect === "attack" && teams.has(slots.find(slot => slot.id === id)?.team)), previous: null };
+  };
   if (["combat", "ready", "missed"].includes(scenario)) {
     state.combats = [fight("fight", "Капля", [mine, "С1"])];
     state.combats[0].ready = scenario === "ready" ? [mine] : [];
@@ -47,6 +59,13 @@ function makeState(scenario) {
     state.combats = [fight("capture-fight", "Капля", members)];
     state.combats[0].numbers = rollback ? [1, 3] : paused ? [2, 1] : [3, 1];
     state.combats[0].counts = [{ attack: rollback ? 0 : paused ? 1 : 2, support: 0, heal: 1 }, { attack: rollback ? 3 : 1, support: 0, heal: 0 }];
+  }
+  if (["pet-carrier", "pet-dd", "teams-pet-aura"].includes(scenario)) {
+    state.pawns.К1 = { hp: 76, aspect: "attack", pet: false, moving: false, deadUntil: 0 };
+    state.pawns[mine].pet = false;
+    state.combats = [fight("pet-aura", "Капля", ["К1", mine, "С1"])];
+    Object.assign(state.combats[0], { carriers: [mine], empowered: ["К1"], numbers: [2, 1], counts: [{ attack: 1, support: 0, heal: 1 }, { attack: 1, support: 0, heal: 0 }] });
+    if (scenario === "pet-dd") { state.active.local = "К1"; state.selections.local = ["К1"]; }
   }
   if (scenario === "spectator") state.claims = { С1: { connection: "other", name: "Александр" } };
   if (scenario.startsWith("finished")) { state.phase = "finished"; state.winner = "blue"; state.score.blue = 1020; state.elapsed = 600; }
@@ -69,12 +88,13 @@ async function send(command) {
     const fight = current.combats.find(fight => fight.id === command.combat);
     for (const id of fight.members.filter(id => current.claims[id]?.connection === "local")) if (!fight.ready.includes(id)) fight.ready.push(id);
   }
+  if (command.type === "focus-combat") document.getElementById("preview-round").textContent = "Демо: цель находится в комнате Owlbear";
   if (command.type === "retreat") { for (const id of command.ids) current.pawns[id].retreating = true; current.combats = current.combats.filter(fight => !command.ids.some(id => fight.members.includes(id))); }
   if (command.type === "move-to-point") { for (const id of command.ids) current.pawns[id].moving = true; }
   if (command.type === "start") {
     if (command.practice) { current.claims = { К1: { connection: "local", name: "К1" } }; current.active.local = "К1"; current.selections.local = ["К1"]; }
     else if (!canStart(current)) return;
-    current.phase = command.practice ? "playing" : "preparing"; addMatch(current); current.practice = Boolean(command.practice);
+    current.phase = command.practice ? "playing" : "preparing"; current.practice = Boolean(command.practice); addMatch(current);
     if (!command.practice) {
       current.elapsed = 0; current.score = { red: 0, blue: 0 }; current.nextWave = 30;
       current.points.forEach(point => { point.team = null; });
@@ -92,19 +112,24 @@ async function send(command) {
 const pristinePanel = document.querySelector("main").cloneNode(true);
 panel = createPanel({ connection: "local", name: "Игрок", host: true, send });
 const scenario = document.getElementById("preview-state");
-for (const [value, label] of [["preparing", "Подготовка · 1:00"], ["preparing-ready", "Подготовка · ты готов"], ["preparing-spectator", "Подготовка · ведущий без фишки"], ["preparing-recovery", "Подготовка · другой ведущий"], ["solo-preparing", "Подготовка · один за 12"], ["teams-preparing", "Подготовка · две команды"], ["playing-recovery", "Матч · другой ведущий"], ["finished-recovery", "Итог · другой ведущий"]]) {
+const addPreviewOption = (value, label) => {
+  if (Array.from(scenario.options).some(option => option.value === value)) return;
   const option = document.createElement("option"); option.value = value; option.textContent = label; scenario.append(option);
+};
+for (const [value, label] of [["preparing", "Подготовка · 1:00"], ["preparing-ready", "Подготовка · ты готов"], ["preparing-spectator", "Подготовка · ведущий без фишки"], ["preparing-recovery", "Подготовка · другой ведущий"], ["solo-preparing", "Подготовка · один за 12"], ["teams-preparing", "Подготовка · две команды"], ["playing-recovery", "Матч · другой ведущий"], ["finished-recovery", "Итог · другой ведущий"]]) {
+  addPreviewOption(value, label);
 }
 for (const [value, label] of [["teams-capture-contested", "Захват · перевес 3:1"], ["teams-capture-paused", "Захват · пауза 2:1"], ["teams-capture-rollback", "Захват · откат 1:3"]]) {
-  const option = document.createElement("option"); option.value = value; option.textContent = label; scenario.append(option);
+  addPreviewOption(value, label);
 }
+for (const [value, label] of [["pet-carrier", "1 с · носитель-лекарь"], ["pet-dd", "1 с · усиленный ДД"], ["teams-pet-aura", "3 с · баф от лекаря своим ДД"]]) addPreviewOption(value, label);
 scenario.addEventListener("change", () => {
   const previous = document.querySelector("main"), next = pristinePanel.cloneNode(true); next.style.width = previous.style.width; previous.replaceWith(next);
   current = makeState(scenario.value); panel = createPanel({ connection: "local", name: "Игрок", host: scenario.value !== "player", send }); panel.update(structuredClone(current));
 });
 document.getElementById("preview-round").addEventListener("click", () => {
   if (!current.combats?.length) return;
-  current.elapsed += 3; for (const fight of current.combats) { fight.round++; fight.endsAt += 3; fight.ready = []; }
+  current.elapsed += current.actionSeconds ?? 3; for (const fight of current.combats) { fight.round = fight.round % (fight.roundLimit ?? 5) + 1; fight.endsAt += fight.stepSeconds ?? 3; fight.ready = []; }
   panel.update(structuredClone(current));
 });
 document.getElementById("preview-size").addEventListener("click", event => {

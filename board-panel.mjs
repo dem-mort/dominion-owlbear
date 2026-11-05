@@ -1,9 +1,9 @@
-import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.5.1";
-import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.5.1";
-import { modeOf } from "./control.mjs?v=0.7.1";
-import { captureStatus } from "./rules.mjs?v=0.7.1";
+import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.8.0";
+import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.8.0";
+import { modeOf } from "./control.mjs?v=0.8.0";
+import { captureStatus } from "./rules.mjs?v=0.8.0";
 const PANEL_KEY = "ru.allods.dominion/help-view";
-const guideUrl = new URL("./guide.svg?v=0.5.1", import.meta.url).href;
+const guideUrl = new URL("./guide.svg?v=0.8.0", import.meta.url).href;
 const blankUrl = new URL("./blank.svg", import.meta.url).href;
 const COLORS = { text: "#e8f0f5", muted: "#a8bac8", red: "#ffb0aa", blue: "#9adeff", amber: "#ffd296", green: "#a7e2c4" };
 // Owlbear validates every TextStyle field, including text hidden on an image.
@@ -27,6 +27,7 @@ function pointStatus(state, name) {
 }
 
 export function panelFields(state) {
+  const mapTarget = state.actionSeconds === 1;
   const playing = state.phase === "playing";
   const preparing = state.phase === "preparing";
   const finished = state.phase === "finished";
@@ -41,7 +42,7 @@ export function panelFields(state) {
   ] : playing ? [
     ["Выбери точку назначения", "Кнопка точки запускает бег."],
     ["Удерживай круг", "12 с без врагов · перевес 2: 30 с"],
-    ["Следи за панелью боя", "Клик раз в 3 с. Можно отступить."],
+    [mapTarget ? "Следи за целью на карте" : "Следи за панелью боя", mapTarget ? "Цель меняется каждую секунду." : "Клик раз в 3 с. Можно отступить."],
   ] : finished ? [
     ["Посмотри итоговый счёт", "Победитель указан под счётом."],
     ["Вернись в лобби", "Кнопку возвращения нажимает ведущий."],
@@ -58,7 +59,9 @@ export function panelFields(state) {
     pets = ready.length ? "Готовы " + ready.join(", ") : state.nextWave < 720 ? "До новой волны " + clock(state.nextWave - state.elapsed) : "Новых волн не будет";
     if (fighting.length) pets += " · бой за " + fighting.join(", ");
   }
-  const fields = [...STATIC_FIELDS, ...mapFields(),
+  const staticFields = STATIC_FIELDS.map(field => field.id === "static-18" ? { ...field, text: mapTarget ? "Нажимай цель на карте" : "1 клик каждые 3 секунды" }
+    : field.id === "static-19" && mapTarget ? { ...field, text: "Цель меняется каждую секунду." } : field);
+  const fields = [...staticFields, ...mapFields(),
     { id: "score-red", text: String(Math.max(0, Math.round(state.score?.red ?? 0))), x: 1088, y: 151, width: 110, height: 46, size: 34, weight: 700, color: COLORS.red },
     { id: "score-blue", text: String(Math.max(0, Math.round(state.score?.blue ?? 0))), x: 1234, y: 151, width: 110, height: 46, size: 34, weight: 700, color: COLORS.blue },
     { id: "status", text: status, x: 1076, y: 228, width: 158, height: 26, size: 12, weight: 600, color: finished ? COLORS[state.winner] ?? COLORS.text : COLORS.muted },

@@ -1,5 +1,6 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.7.1";
-import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.7.1";
+import { boardPanelViews } from "./board-panel.mjs?v=0.8.0";
+import { targetViews } from "./targets.mjs?v=0.8.0";
+import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.8.0";
 
 export const HOME_KEY = NS + "/lobby-position";
 export const PAWN_KEY = NS + "/pawn";
@@ -61,7 +62,7 @@ export function visiblePawns(state, items, connection, role) {
 }
 
 function signature(item) {
-  return JSON.stringify([item.position, item.rotation, item.scale, item.image, item.grid, item.text, item.name, item.commands, item.style]);
+  return JSON.stringify([item.position, item.rotation, item.scale, item.image, item.grid, item.text, item.name, item.commands, item.style, item.metadata]);
 }
 
 // Local items belong to this browser's view. They never change shared visibility.
@@ -92,6 +93,7 @@ export function createLocalVision(OBR, connection, role, onError, Command) {
         const desired = new Map(visiblePawns(snapshot.state, snapshot.items, connection, role)
           .map(view => [view.source, view.item]));
         for (const view of boardPanelViews(snapshot.state, snapshot.items, Command)) desired.set(view.source, view.item);
+        for (const view of targetViews(snapshot.state, snapshot.items, connection)) desired.set(view.source, view.item);
         const removed = [...views.keys()].filter(id => !desired.has(id));
         if (removed.length) {
           await OBR.scene.local.deleteItems(removed.map(id => views.get(id).item.id));
@@ -125,6 +127,7 @@ export function createLocalVision(OBR, connection, role, onError, Command) {
                 if (next.type === "PATH") { item.commands = next.commands; item.style = next.style; }
                 else { item.image = next.image; item.grid = next.grid; item.text = next.text; }
                 item.name = next.name;
+                item.metadata = next.metadata;
               }
             },
           );

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="140" height="140" viewBox="0 0 140 140">
+  <defs><filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="4"/></filter></defs>
+  <circle cx="70" cy="70" r="54" fill="none" stroke="#43ee91" stroke-width="10" opacity=".65" filter="url(#glow)"/>
+  <circle cx="70" cy="70" r="54" fill="#093d2d" fill-opacity=".85" stroke="#7bffaf" stroke-width="5"/>
+  <circle cx="70" cy="70" r="41" fill="none" stroke="#43ee91" stroke-width="2" opacity=".55"/>
+  <path d="m43 71 18 18 37-40" fill="none" stroke="#c5ffdc" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

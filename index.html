@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Доминион</title>
-<link rel="stylesheet" href="./panel.css?v=0.7.1">
+<link rel="stylesheet" href="./panel.css?v=0.8.0">
 <main class="app">
   <header class="app-header">
     <div><div class="eyebrow">ДОМИНИОН / 6×6</div><h1>Осколок Силы</h1></div>
@@ -60,8 +60,9 @@
       <section id="winner-card" class="winner-card" hidden><h2 id="winner" role="status"></h2><p class="fine">Матч завершён</p><button id="restart" type="button" class="primary" hidden>Вернуться в лобби</button></section>
       <section id="multi-controls" class="multi-controls" hidden><div class="section-heading"><h2>Твои персонажи</h2><span id="owned-count" class="fine"></span></div><div class="multi-fields"><div><label for="active-pawn">Персонаж</label><select id="active-pawn"></select></div><div><label for="move-scope">Приказ движения</label><select id="move-scope"></select></div></div><p id="selection-summary" class="fine"></p></section>
       <section id="player-card" class="player-card" aria-label="Твой персонаж">
-        <div class="player-heading"><div><h2 id="me"></h2><p id="player-state" class="fine"></p></div><span id="pet-charge" class="badge amber" hidden>Баф +20%</span></div>
+        <div class="player-heading"><div><h2 id="me"></h2><p id="player-state" class="fine"></p></div><span id="pet-charge" class="badge amber" hidden>+30% к урону ДД</span></div>
         <div id="health-row" class="health-row" hidden><meter id="health" min="0" max="100" value="100" aria-label="Здоровье"></meter><span id="health-label">100/100</span></div>
+        <p id="pet-help" class="fine" hidden></p>
         <p id="control" class="next-action" role="status"></p>
       </section>
       <div id="fight-tabs" class="fight-tabs" role="group" aria-label="Твои стычки" hidden></div>
@@ -73,7 +74,8 @@
         <p id="combat-pick" class="combat-pick" role="status"></p>
         <p id="combat-scope" class="fine" hidden></p>
         <button type="button" id="combat-action" class="combat-action">Атаковать</button>
-        <p class="combat-rule">Один клик на отсчёт · скорость клика не важна</p>
+        <button type="button" id="focus-combat" class="secondary focus-combat" hidden>К цели на карте</button>
+        <p id="combat-rule" class="combat-rule">Один клик на отсчёт · скорость клика не важна</p>
         <p id="combat-result" class="combat-result"></p>
         <button id="retreat" type="button" class="retreat">Отступить <span>к своему респу →</span></button>
       </section>
@@ -86,7 +88,7 @@
         </ul>
         <p id="free-move" class="fine" hidden>Свободный маршрут: инструмент «Бег» на карте.</p>
       </section>
-      <section class="pet-card"><div class="section-heading"><h3>Баф питомца</h3><span class="amber">+20% · 1 бой</span></div><p id="pets"></p><p class="fine">На лапе карты · 5 с без врагов</p></section>
+      <section class="pet-card"><div class="section-heading"><h3>Баф питомца</h3><span class="amber">+30% к урону ДД</span></div><p id="pets"></p><p class="fine">На лапе карты · 5 с без врагов</p><p class="fine">Одна стычка · носитель усиливает ДД своей команды · не складывается</p></section>
       <p id="clash" class="clash" role="status" hidden></p>
       <button id="practice-opponent" class="secondary practice-opponent" type="button" hidden>Добавить соперника к Капле</button>
       <details class="disclosure"><summary>Детали матча</summary><p id="pace" class="fine"></p><p class="fine">Союзники видны всегда. Враги появляются рядом.</p><p class="fine">Два пропуска действий подряд — поражение. После смерти: 25 с на своём респе.</p><p id="combat-score" class="fine"></p></details>
@@ -96,5 +98,5 @@
   </section>
   <p id="notice" role="status" class="notice" hidden></p>
 </main>
-<script type="module" src="./panel.mjs?v=0.7.1"></script>
+<script type="module" src="./panel.mjs?v=0.8.0"></script>
 </html>

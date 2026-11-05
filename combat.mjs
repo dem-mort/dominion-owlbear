@@ -1,6 +1,7 @@
 export const STEP_SECONDS = 3;
 export const COMBAT_STEPS = 5;
 export const MAX_HP = 100;
+export const PET_DAMAGE_MULTIPLIER = 1.3;
 export const ASPECTS = {
   attack: { name: "Аспект Нападения", short: "ДД", help: "Наносит основной урон", damage: 22, power: 1 },
   support: { name: "Аспект Поддержки", short: "САП", help: "Усиливает активных ДД рядом", damage: 8, power: 0.75 },
@@ -31,6 +32,10 @@ export function defaultAspect(slot) {
   return slot.name.endsWith(" · Жрец") ? "heal" : slot.name.endsWith(" · Бард") ? "support" : "attack";
 }
 
+export function actionSeconds(match) {
+  return match?.stepSeconds === 1 ? 1 : STEP_SECONDS;
+}
+
 export function defeat(match, pawn, reason) {
   pawn.hp = 0;
   pawn.deadUntil = match.elapsed + 25;
@@ -57,11 +62,11 @@ export function combatClick(match, id, combatId, step) {
 }
 
 function openStep(match, combat, sides) {
-  combat.endsAt = match.elapsed + STEP_SECONDS;
+  combat.endsAt = combat.startedAt + combat.round * combat.stepSeconds;
   combat.clicks = {};
   combat.members = allSides(sides).map(pawn => {
     if (!combat.fighters[pawn.id]) {
-      combat.fighters[pawn.id] = { actions: 0, missed: 0, pet: false };
+      combat.fighters[pawn.id] = { actions: 0, missed: 0 };
       pawn.destination = null;
     }
     return pawn.id;
@@ -70,8 +75,23 @@ function openStep(match, combat, sides) {
 }
 
 function activeSupport(pawns, combat) {
-  return Math.min(0.7, pawns.filter(pawn => pawn.aspect === "support" && combat.clicks[pawn.id])
-    .reduce((sum, pawn) => sum + 0.35 * (combat.fighters[pawn.id].pet ? 1.2 : 1), 0));
+  return Math.min(0.7, pawns.filter(pawn => pawn.aspect === "support" && combat.clicks[pawn.id]).length * 0.35);
+}
+
+function auraSources(combat, present, active = null) {
+  const sources = {};
+  for (const team of ["red", "blue"]) {
+    const spent = present.find(pawn => pawn.team === team && pawn.id === combat.carriers[team]);
+    const carrier = spent ?? present.find(pawn => pawn.team === team && pawn.pet);
+    if (!carrier) continue;
+    sources[team] = carrier.id;
+    if (!spent && active?.some(pawn => pawn.team === team && pawn.aspect === "attack") &&
+        present.some(pawn => pawn.team !== team)) {
+      carrier.pet = false;
+      combat.carriers[team] = carrier.id;
+    }
+  }
+  return sources;
 }
 
 export function combatViews(match) {
@@ -80,15 +100,20 @@ export function combatViews(match) {
     if (!combat) return [];
     const present = Object.values(match.pawns).filter(pawn => pawn.claim && !pawn.deadUntil && near(pawn.position, area.position) <= area.radius);
     const members = combat.members.filter(id => present.some(pawn => pawn.id === id));
+    const sources = auraSources(combat, present.filter(pawn => members.includes(pawn.id)));
     const counts = ["red", "blue"].map(team => Object.fromEntries(Object.keys(ASPECTS).map(aspect => [
       aspect, present.filter(pawn => pawn.team === team && pawn.aspect === aspect).length,
     ])));
     return [{
       id: combat.id, name: area.name, kind: combat.kind, round: combat.round, endsAt: combat.endsAt,
+      position: { ...area.position }, radius: area.radius,
+      stepSeconds: combat.stepSeconds, roundLimit: combat.roundLimit,
       totals: [...combat.totals], members, counts,
       numbers: [present.filter(pawn => pawn.team === "red").length, present.filter(pawn => pawn.team === "blue").length],
       ready: Object.keys(combat.clicks).filter(id => members.includes(id)),
-      empowered: members.filter(id => combat.fighters[id].pet), previous: combat.history.at(-1) ?? null,
+      carriers: Object.values(sources),
+      empowered: members.filter(id => match.pawns[id].aspect === "attack" && sources[match.pawns[id].team]),
+      previous: combat.history.at(-1) ?? null,
     }];
   });
 }
@@ -106,7 +131,9 @@ function finish(match, area, present, winner, reason, chance = null) {
 export function combatTick(match, area, sides, kind, die) {
   if (!area.combat) {
     if (!sides.red.length || !sides.blue.length) return false;
-    area.combat = { id: area.id + "/" + ++match.nextCombat, kind, round: 1, fighters: {}, history: [], totals: [0, 0], inactive: [] };
+    const stepSeconds = actionSeconds(match);
+    area.combat = { id: area.id + "/" + ++match.nextCombat, kind, round: 1, stepSeconds, roundLimit: 15 / stepSeconds,
+      startedAt: match.elapsed, fighters: {}, carriers: {}, history: [], totals: [0, 0], inactive: [] };
     openStep(match, area.combat, sides);
   }
   const combat = area.combat;
@@ -129,25 +156,26 @@ export function combatTick(match, area, sides, kind, die) {
     if (clicked) {
       fighter.actions++;
       fighter.missed = 0;
-      if (pawn.pet) { fighter.pet = true; pawn.pet = false; }
     } else fighter.missed++;
-    if (fighter.missed >= 2 || (combat.round === COMBAT_STEPS && fighter.actions === 0)) {
+    if (fighter.missed >= 2 || (combat.round === combat.roundLimit && fighter.actions === 0)) {
       combat.inactive.push(pawn.id);
       defeat(match, pawn, "inactive");
     }
-    results.push({ id: pawn.id, team: pawn.team, aspect: pawn.aspect, active: clicked, missed: fighter.missed, damage: 0, healing: 0, boost: 0, pet: fighter.pet });
+    results.push({ id: pawn.id, team: pawn.team, aspect: pawn.aspect, active: clicked, missed: fighter.missed, damage: 0, healing: 0, boost: 0, pet: false });
   }
   present = present.filter(pawn => !pawn.deadUntil);
   const active = present.filter(pawn => combat.clicks[pawn.id]);
+  const sources = auraSources(combat, present, active);
+  const effectScale = combat.stepSeconds / STEP_SECONDS;
   const support = Object.fromEntries(["red", "blue"].map(team => [team, activeSupport(active.filter(pawn => pawn.team === team), combat)]));
   const incoming = Object.fromEntries(present.map(pawn => [pawn.id, 0]));
   const healing = Object.fromEntries(present.map(pawn => [pawn.id, 0]));
   for (const pawn of active) {
     const enemies = present.filter(other => other.team !== pawn.team);
     if (!enemies.length) continue;
-    const fighter = combat.fighters[pawn.id];
     const result = results.find(result => result.id === pawn.id);
-    const damage = ASPECTS[pawn.aspect].damage * factor(die) * (fighter.pet ? 1.2 : 1) * (pawn.aspect === "attack" ? 1 + support[pawn.team] : 1);
+    result.pet = pawn.aspect === "attack" && Boolean(sources[pawn.team]);
+    const damage = ASPECTS[pawn.aspect].damage * effectScale * factor(die) * (result.pet ? PET_DAMAGE_MULTIPLIER : 1) * (pawn.aspect === "attack" ? 1 + support[pawn.team] : 1);
     const target = enemies[targetIndex(enemies.length, die)];
     incoming[target.id] += damage;
     result.damage = Math.round(damage);
@@ -157,7 +185,7 @@ export function combatTick(match, area, sides, kind, die) {
     const allies = present.filter(other => other.team === pawn.team);
     const target = allies.reduce((lowest, other) =>
       other.hp - incoming[other.id] + healing[other.id] < lowest.hp - incoming[lowest.id] + healing[lowest.id] ? other : lowest);
-    const amount = Math.min(MAX_HP - target.hp + incoming[target.id] - healing[target.id], 22 * factor(die) * (combat.fighters[pawn.id].pet ? 1.2 : 1));
+    const amount = Math.min(MAX_HP - target.hp + incoming[target.id] - healing[target.id], 22 * effectScale * factor(die));
     healing[target.id] += Math.max(0, amount);
     results.find(result => result.id === pawn.id).healing = Math.round(Math.max(0, amount));
   }
@@ -173,10 +201,10 @@ export function combatTick(match, area, sides, kind, die) {
   const blue = survivors.filter(pawn => pawn.team === "blue");
   if (!red.length || !blue.length) {
     finish(match, area, survivors, !survivors.length ? "draw" : red.length ? "red" : "blue", "elimination");
-  } else if (combat.round === COMBAT_STEPS) {
+  } else if (combat.round === combat.roundLimit) {
     // Random final throw, weighted by the CURRENT survivors, health and aspects.
     const weights = [red, blue].map(group => group.reduce((sum, pawn) => sum + pawn.hp * ASPECTS[pawn.aspect].power *
-      (combat.clicks[pawn.id] ? 1 : 0.35) * (combat.fighters[pawn.id].pet ? 1.2 : 1) *
+      (combat.clicks[pawn.id] ? 1 : 0.35) *
       (pawn.aspect === "attack" ? 1 + support[pawn.team] : 1), 0));
     const chance = weights[0] / (weights[0] + weights[1]);
     const ticket = ((die() - 1) * 6 + die() - 0.5) / 36;

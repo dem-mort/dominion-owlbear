@@ -1,5 +1,5 @@
-import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, COMBAT_STEPS, captureStatus } from "./rules.mjs?v=0.7.1";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.7.1";
+import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.8.0";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.8.0";
 
 const ASPECT_LABEL = { attack: "Нападение", support: "Поддержка", heal: "Исцеление" };
 const ACTION_LABEL = { attack: "Атаковать", support: "Поддержать", heal: "Лечить" };
@@ -24,14 +24,27 @@ export function preparationPrompt(state, connection) {
 }
 export function combatPrompt(combat, pawn, mine, elapsed, pressed) {
   const remaining = Math.max(0, combat.endsAt - elapsed);
+  const stepSeconds = combat.stepSeconds === 1 ? 1 : 3, roundLimit = combat.roundLimit ?? 5;
+  const finish = prompt => stepSeconds === 1
+    ? { ...prompt, stepSeconds, roundLimit, mapTarget: true, disabled: true, button: "Нажми цель на карте", hint: prompt.state === "ready" ? "Действие принято ✓ · жди следующую цель" : "Цель меняется каждую секунду" }
+    : { ...prompt, stepSeconds, roundLimit, mapTarget: false };
   const ready = combat.ready.includes(mine);
   const previous = combat.previous?.results.find(result => result.id === mine);
-  if (ready) return { remaining, disabled: true, state: "ready", tone: "success", button: "Действие принято ✓", hint: "Жди следующего сигнала", previous };
-  if (pressed) return { remaining, disabled: true, state: "sending", tone: "normal", button: "Отправляю…", hint: "Проверяем действие", previous };
-  if (!remaining) return { remaining, disabled: true, state: "waiting", tone: "normal", button: "Следующий сигнал…", hint: "Отсчёт завершён", previous };
-  return { remaining, disabled: false, state: "action", tone: previous && !previous.active ? "danger" : "normal",
+  if (ready) return finish({ remaining, disabled: true, state: "ready", tone: "success", button: "Действие принято ✓", hint: "Жди следующего сигнала", previous });
+  if (pressed) return finish({ remaining, disabled: true, state: "sending", tone: "normal", button: "Отправляю…", hint: "Проверяем действие", previous });
+  if (!remaining) return finish({ remaining, disabled: true, state: "waiting", tone: "normal", button: "Следующий сигнал…", hint: "Отсчёт завершён", previous });
+  return finish({ remaining, disabled: false, state: "action", tone: previous && !previous.active ? "danger" : "normal",
     button: ACTION_LABEL[pawn.aspect] ?? ACTION_LABEL.attack,
-    hint: previous && !previous.active ? "Пропуск 1/2 — действуй сейчас" : "Нажми один раз до конца отсчёта", previous };
+    hint: previous && !previous.active ? "Пропуск 1/2 — действуй сейчас" : "Нажми один раз до конца отсчёта", previous });
+}
+export function petAuraPrompt(pawn, combat, id) {
+  const carrier = Boolean(combat?.carriers?.includes(id));
+  const empowered = pawn?.aspect === "attack" && Boolean(combat?.empowered?.includes(id));
+  const charged = Boolean(pawn?.pet);
+  const help = empowered ? "Твой урон усилен на 30%. Бафы питомцев не складываются."
+    : carrier ? "Ты носитель: +30% к урону ДД своей команды в этой стычке. " + (pawn?.aspect === "heal" ? "Твоё лечение не усиливается." : pawn?.aspect === "support" ? "Твоя поддержка не усиливается." : "Бафы не складываются.")
+    : charged ? "Заряд: +30% к урону ДД в одной стычке. Бафы не складываются." : "";
+  return { carrier, empowered, charged, visible: carrier || empowered || charged, label: "+30% к урону ДД", help };
 }
 export function scenePortraits(items) {
   return Object.fromEntries(items.filter(item => item.layer === "CHARACTER").flatMap(item => {
@@ -57,9 +70,9 @@ export function controllerCombatPrompt(state, combat, connection, pressed) {
   const results = combat.previous?.results.filter(result => ids.includes(result.id)) ?? [];
   const missed = results.filter(result => !result.active).length;
   if (ids.length > 1) {
-    if (prompt.state === "action") prompt.button = "Действовать за " + ids.length;
-    if (prompt.state === "ready") prompt.button = "Действия приняты ✓";
-    if (missed && !ready && !pressed) { prompt.hint = "Пропуск у " + missed + " · ещё один — поражение"; prompt.tone = "danger"; }
+    if (prompt.state === "action" && !prompt.mapTarget) prompt.button = "Действовать за " + ids.length;
+    if (prompt.state === "ready" && !prompt.mapTarget) prompt.button = "Действия приняты ✓";
+    if (missed && !ready && !pressed && !prompt.mapTarget) { prompt.hint = "Пропуск у " + missed + " · ещё один — поражение"; prompt.tone = "danger"; }
   }
   return { ...prompt, ids, readyCount, missed, results };
 }
@@ -272,8 +285,10 @@ export function createPanel({ root = document, connection, name, host, send }) {
     text("combat-title", (combat.kind === "pet" ? "Баф: " : "Бой: ") + combat.name);
     text("combat-seconds", Math.ceil(prompt.remaining));
     text("combat-clock", prompt.state === "ready" ? "Следующий сигнал" : "Время на действие");
-    text("combat-round", combat.round + "/" + COMBAT_STEPS);
-    element("combat-progress").value = Math.min(3, prompt.remaining);
+    text("combat-round", combat.round + "/" + prompt.roundLimit);
+    element("combat-progress").max = prompt.stepSeconds;
+    element("combat-progress").value = Math.min(prompt.stepSeconds, prompt.remaining);
+    element("combat-progress").setAttribute("aria-label", prompt.mapTarget ? "До смены цели" : "Время на действие");
     const lineupKey = JSON.stringify([combat.numbers, combat.counts]);
     if (element("combat-lineup").dataset.signature !== lineupKey) {
       element("combat-lineup").dataset.signature = lineupKey;
@@ -287,7 +302,11 @@ export function createPanel({ root = document, connection, name, host, send }) {
     }
     text("combat-pick", prompt.hint); element("combat-pick").dataset.tone = prompt.tone;
     text("combat-action", prompt.button); element("combat-action").dataset.state = prompt.state;
+    element("combat-action").dataset.mapTarget = String(prompt.mapTarget);
     element("combat-action").disabled = prompt.disabled || waiting;
+    element("focus-combat").hidden = !prompt.mapTarget;
+    element("focus-combat").disabled = waiting;
+    text("combat-rule", prompt.mapTarget ? "Цель меняется каждую секунду" : "Один клик на отсчёт · скорость клика не важна");
     element("combat-scope").hidden = modeOf(state) === "individual";
     const bothSides = new Set(members.map(id => state.slots.find(slot => slot.id === id).team)).size > 1;
     text("combat-scope", (bothSides ? "Обе стороны · " : "Твои персонажи · ") + members.length + ". Клик действует только в этой стычке.");
@@ -297,13 +316,15 @@ export function createPanel({ root = document, connection, name, host, send }) {
     const result = prompt.previous;
     const sum = key => prompt.results.reduce((value, item) => value + (Number(item[key]) || 0), 0);
     text("combat-result", members.length > 1 && prompt.results.length ? "Урон " + sum("damage") + (sum("healing") ? " · лечение " + sum("healing") : "") + (prompt.missed ? " · пропуски " + prompt.missed : "") : result ? !result.active ? "Ещё один пропуск подряд — поражение" : "Урон " + result.damage + (result.healing ? " · лечение " + result.healing : "") + (result.boost ? " · ДД +" + result.boost + "%" : "") : "Случайность и состав команд решают исход");
-    const buffs = members.filter(id => combat.empowered.includes(id) || state.pawns[id].pet).length;
-    text("combat-score", buffs ? "Баф +20% у " + buffs + " из " + members.length + " твоих персонажей в этой стычке." : "Без бафа питомца. Состав команд показан в блоке боя.");
+    const buffs = members.filter(id => state.pawns[id]?.aspect === "attack" && combat.empowered?.includes(id)).length;
+    const ownTeams = new Set(members.map(id => state.slots.find(slot => slot.id === id)?.team));
+    const carriers = (combat.carriers ?? []).filter(id => ownTeams.has(state.slots.find(slot => slot.id === id)?.team));
+    text("combat-score", buffs || carriers.length ? "+30% к урону ДД своей команды в этой стычке. Твоих усиленных ДД: " + buffs + ". Бафы не складываются." : "Без бафа питомца. Состав команд показан в блоке боя.");
     if (lastCombat !== combat.id) { lastCombat = combat.id; element("combat").scrollIntoView({ block: "start" }); }
   }
 
   function render() {
-    const compatible = state?.rules === "0.7.1";
+    const compatible = state?.rules === "0.8.0";
     element("loading").hidden = compatible;
     element("lobby").hidden = !compatible || state.phase !== "lobby";
     element("playing").hidden = !compatible || state.phase === "lobby";
@@ -349,7 +370,10 @@ export function createPanel({ root = document, connection, name, host, send }) {
     if (wasMoving && !pawn?.moving) requestedPoint = null;
     wasMoving = Boolean(pawn?.moving);
     element("health-row").hidden = !pawn; element("health").value = pawn?.hp ?? 0; text("health-label", (pawn?.hp ?? 0) + "/100");
-    element("pet-charge").hidden = !pawn?.pet && !combat?.empowered?.includes(mine);
+    const activeCombat = state.combats?.find(fight => fight.members.includes(mine));
+    const aura = petAuraPrompt(pawn, activeCombat, mine);
+    element("pet-charge").hidden = !aura.visible; text("pet-charge", aura.label);
+    element("pet-help").hidden = !aura.visible; text("pet-help", aura.help);
     element("combat").hidden = !combat;
     if (combat) renderCombat(combat); else { lastCombat = null; text("combat-score", ""); }
     const selectedInFight = combat && chosen.some(id => combat.members.includes(id));
@@ -426,6 +450,9 @@ export function createPanel({ root = document, connection, name, host, send }) {
     try { await send({ type: "combat-click", board: state.board, host: state.host, id: prompt.ids[0], combat: combat.id, round: combat.round }); notice(""); }
     catch (error) { combatPressed.delete(roundKey); notice("Действие не отправилось. Нажми ещё раз."); console.error(error); }
     render();
+  });
+  element("focus-combat").addEventListener("click", () => {
+    if (state?.phase === "playing" && focusedFight()?.stepSeconds === 1) void run({ type: "focus-combat" });
   });
   element("retreat").addEventListener("click", () => {
     if (state?.phase !== "playing") return;

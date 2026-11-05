@@ -86,6 +86,7 @@ input,select { width: 100%; min-width: 0; background: #10232e; color: #e8f0f5; b
 .recovery .danger { font-size: 11px; line-height: 1.4; }
 .player-card { padding: 0 0 10px; border-bottom: 1px solid #314855; }
 .player-heading { display: flex; justify-content: space-between; align-items: center; gap: 5px; }
+.player-heading > div { min-width: 0; }.player-heading .badge { flex: 0 0 auto; font-size: 9px; }#pet-help { font-size: 10px; margin-top: 6px; }
 #me { font-size: 13px; }#player-state { font-size: 10px; margin: 2px 0; }
 .health-row { display: flex; gap: 8px; align-items: center; margin: 5px 0 0; }
 #health { flex: 1; min-width: 0; width: 100%; height: 9px; appearance: none; border: 0; }
@@ -115,6 +116,8 @@ input,select { width: 100%; min-width: 0; background: #10232e; color: #e8f0f5; b
 .combat-action:hover:enabled { background: #ffe1b8; border-color: #ffe1b8; }
 .combat-action:disabled { background: #3a453c; color: var(--green); border-color: #5c806c; opacity: 1; }
 .combat-action[data-state="sending"],.combat-action[data-state="waiting"] { background: #3d4544; border-color: #74877d; color: #cbd4cf; }
+.combat-action[data-map-target="true"]:disabled { background: #203b49; border-color: #658c9d; color: var(--blue); font-size: 14px; }
+.focus-combat { justify-content: center; min-height: 35px; padding: 6px 9px; color: var(--blue); }
 .combat-rule { font-size: 9px; color: #c7c4b9; text-align: center; margin: 6px 0; }
 .combat-result { font-size: 10px; color: #d8d6c9; min-height: 14px; margin: 6px 0; }
 .retreat { width: 100%; min-height: 34px; display: flex; justify-content: space-between; align-items: center; background: transparent; font-size: 11px; padding: 6px 9px; }
