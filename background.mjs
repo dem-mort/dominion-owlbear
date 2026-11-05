@@ -29,6 +29,7 @@ export async function initialize(OBR) {
   const pending = [];
   let lastTick = 0;
   let lastPublish = -Infinity;
+  let lastItemSync = -Infinity;
   let publishedItems = new Map();
   let sceneItems = [];
   let sceneReady = false;
@@ -70,7 +71,9 @@ export async function initialize(OBR) {
     await OBR.room.setMetadata({ [stateKey]: snapshot });
   }
 
-  async function syncItems() {
+  async function syncItems(force = false) {
+    // Keep the 100 ms simulation independent of Owlbear's SDK request budget.
+    if (!force && clock() - lastItemSync < 0.4 - 1e-8) return;
     const desired = new Map();
     for (const pawn of Object.values(match.pawns)) {
       desired.set(pawn.id, {
@@ -88,7 +91,9 @@ export async function initialize(OBR) {
     }
     const changes = new Map([...desired].filter(([id, values]) => publishedItems.get(id) !== JSON.stringify(values)));
     if (!changes.size) return;
-    await OBR.scene.items.updateItems([...changes.keys()], items => {
+    lastItemSync = clock();
+    // Passing the cached records avoids the SDK's extra getItems request.
+    await OBR.scene.items.updateItems(sceneItems.filter(item => changes.has(item.id)), items => {
       for (const item of items) {
         const values = changes.get(item.id);
         if (values.pawn) {
@@ -219,7 +224,7 @@ export async function initialize(OBR) {
           match.practice = practice;
           lastTick = clock();
           publishedItems.clear();
-          await syncItems();
+          await syncItems(true);
           await publish();
         } else if (data.type === "lobby" && local && match) {
           await returnToLobby();
@@ -265,7 +270,7 @@ export async function initialize(OBR) {
 
   async function sendTarget(event, force) {
     const active = drag;
-    if (!active || (!force && clock() - lastMove < 0.085)) return;
+    if (!active || (!force && clock() - lastMove < 0.4)) return;
     lastMove = clock();
     // ToolEvent.pointerPosition is already in scene coordinates.
     await moveTo(active, event.pointerPosition);
