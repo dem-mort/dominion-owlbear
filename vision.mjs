@@ -1,4 +1,4 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.4.3";
+import { boardPanelViews } from "./board-panel.mjs?v=0.5.1";
 import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.4.0";
 
 export const HOME_KEY = NS + "/lobby-position";
@@ -56,11 +56,11 @@ export function visiblePawns(state, items, connection, role) {
 }
 
 function signature(item) {
-  return JSON.stringify([item.position, item.rotation, item.scale, item.image, item.grid, item.text, item.name]);
+  return JSON.stringify([item.position, item.rotation, item.scale, item.image, item.grid, item.text, item.name, item.commands, item.style]);
 }
 
 // Local items belong to this browser's view. They never change shared visibility.
-export function createLocalVision(OBR, connection, role, onError) {
+export function createLocalVision(OBR, connection, role, onError, Command) {
   let current = { state: null, items: [], ready: false };
   let views = new Map();
   let dirty = false;
@@ -86,7 +86,7 @@ export function createLocalVision(OBR, connection, role, onError) {
 
         const desired = new Map(visiblePawns(snapshot.state, snapshot.items, connection, role)
           .map(view => [view.source, view.item]));
-        for (const view of boardPanelViews(snapshot.state, snapshot.items)) desired.set(view.source, view.item);
+        for (const view of boardPanelViews(snapshot.state, snapshot.items, Command)) desired.set(view.source, view.item);
         const removed = [...views.keys()].filter(id => !desired.has(id));
         if (removed.length) {
           await OBR.scene.local.deleteItems(removed.map(id => views.get(id).item.id));
@@ -117,9 +117,8 @@ export function createLocalVision(OBR, connection, role, onError) {
                 item.position = next.position;
                 item.rotation = next.rotation;
                 item.scale = next.scale;
-                item.image = next.image;
-                item.grid = next.grid;
-                item.text = next.text;
+                if (next.type === "PATH") { item.commands = next.commands; item.style = next.style; }
+                else { item.image = next.image; item.grid = next.grid; item.text = next.text; }
                 item.name = next.name;
               }
             },

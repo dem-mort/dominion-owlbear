@@ -1,5 +1,5 @@
 import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.4.0";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.4.3";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.5.1";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -18,7 +18,7 @@ function label(item, value) {
   item.text.richText = [{ type: "paragraph", children: [{ text: value }] }];
 }
 
-export async function initialize(OBR) {
+export async function initialize(OBR, Command) {
   const [role, connection] = await Promise.all([OBR.player.getRole(), OBR.player.getConnectionId()]);
   const host = role === "GM";
   let board = null;
@@ -37,7 +37,7 @@ export async function initialize(OBR) {
   let sceneReady = false;
   let lastWarning = -Infinity;
   let announcedCombat = null;
-  const vision = createLocalVision(OBR, connection, role, fail);
+  const vision = createLocalVision(OBR, connection, role, fail, Command);
 
   function updateLocal() {
     vision.update(state, sceneItems, sceneReady);

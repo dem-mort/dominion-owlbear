@@ -2,41 +2,41 @@
   <rect x="1044" width="350" height="926" fill="#101f29"/>
   <rect x="1052" y="16" width="326" height="894" rx="20" fill="#172a36" stroke="#3a5260" stroke-width="1.3"/>
   <g font-family="Roboto,Arial,sans-serif">
-    <text x="1076" y="45" font-size="11" letter-spacing="1.2" font-weight="700" fill="#a8bac8">ДОМИНИОН / 6×6</text>
-    <text x="1076" y="79" font-size="25" font-weight="700" fill="#edf4f8">Осколок Силы</text>
-    <text x="1076" y="102" font-size="12" fill="#a8bac8">12 минут · цель — 1000 очков</text>
+    
+    
+    
     <rect x="1076" y="120" width="132" height="92" rx="11" fill="#332f37" stroke="#855d61" stroke-opacity=".65"/>
     <rect x="1222" y="120" width="132" height="92" rx="11" fill="#203c4d" stroke="#4e869e" stroke-opacity=".65"/>
-    <text x="1088" y="143" font-size="10.5" font-weight="700" letter-spacing=".7" fill="#ffb0aa">КРАСНЫЕ</text>
-    <text x="1234" y="143" font-size="10.5" font-weight="700" letter-spacing=".7" fill="#9adeff">СИНИЕ</text>
-    <text x="1354" y="225" text-anchor="end" font-size="8.5" letter-spacing="1" fill="#829ba9">ТАЙМЕР</text>
+    
+    
+    
     <path d="M1076 274H1354" stroke="#3a5260"/>
     <g fill="#2a4253" stroke="#456377" stroke-width=".8">
       <circle cx="1087" cy="330" r="11"/><circle cx="1087" cy="377" r="11"/><circle cx="1087" cy="424" r="11"/>
     </g>
     <g text-anchor="middle" font-size="11" font-weight="700" fill="#d0e4f1">
-      <text x="1087" y="334">1</text><text x="1087" y="381">2</text><text x="1087" y="428">3</text>
+      
     </g>
     <path d="M1076 470H1354" stroke="#3a5260" stroke-opacity=".65"/>
-    <text x="1076" y="489" font-size="11" font-weight="700" letter-spacing=".8" fill="#a8bac8">КОНТРОЛЬ ТОЧЕК</text>
-    <text x="1354" y="489" text-anchor="end" font-size="10.5" fill="#a8bac8">+30 очков / 30 с</text>
+    
+    
     <g fill="#203541"><rect x="1076" y="500" width="278" height="32" rx="7"/><rect x="1076" y="536" width="278" height="32" rx="7"/><rect x="1076" y="572" width="278" height="32" rx="7"/></g>
     <g fill="#d9c9a5">
       <circle cx="1093" cy="511" r="4"/><circle cx="1089" cy="517" r="4"/><circle cx="1097" cy="517" r="4"/><path d="M1093 517L1090 524H1096Z"/>
       <path d="M1093 543C1091 547 1086 551 1086 555A7 7 0 0 0 1100 555C1100 551 1095 547 1093 543Z"/>
       <path d="M1093 579L1096 585L1103 586L1098 591L1099 598L1093 595L1087 598L1088 591L1083 586L1090 585Z"/>
     </g>
-    <g font-size="13" font-weight="650" fill="#e8f0f5"><text x="1110" y="522">Трефа</text><text x="1110" y="558">Капля</text><text x="1110" y="594">Звезда</text></g>
+    <g font-size="13" font-weight="650" fill="#e8f0f5"></g>
     <rect x="1076" y="624" width="278" height="106" rx="11" fill="#2a302f" stroke="#746342" stroke-opacity=".6"/>
-    <text x="1088" y="647" font-size="11" font-weight="700" letter-spacing=".8" fill="#ffd296">БАФ ПИТОМЦА</text>
-    <text x="1088" y="668" font-size="13" font-weight="600" fill="#eee9dc">+20% к аспекту · один бой</text>
-    <text x="1088" y="718" font-size="11.5" fill="#bdbba9">Взять: 5 с в круге без врагов</text>
-    <text x="1076" y="758" font-size="11" font-weight="700" letter-spacing=".6" fill="#a8bac8">ЕСЛИ ВСТРЕТИЛ ВРАГА</text>
-    <text x="1076" y="784" font-size="17" font-weight="700" fill="#edf4f8">1 клик каждые 3 секунды</text>
-    <text x="1076" y="808" font-size="12" fill="#b9c9d5">Панель боя откроется сама.</text>
-    <text x="1076" y="830" font-size="12" fill="#ffd296">2 пропуска подряд — поражение.</text>
-    <text x="1076" y="852" font-size="12" fill="#b9c9d5">Можно отступить. Респ — 25 с.</text>
+    
+    
+    
+    
+    
+    
+    
+    
     <path d="M1076 867H1354" stroke="#3a5260" stroke-opacity=".65"/>
-    <g font-size="10.5"><text x="1076" y="888" font-weight="700" fill="#ffb0aa">ДД</text><text x="1097" y="888" fill="#a8bac8">урон</text><text x="1150" y="888" font-weight="700" fill="#9adeff">САП</text><text x="1176" y="888" fill="#a8bac8">усиление</text><text x="1253" y="888" font-weight="700" fill="#a7e2c4">ХИЛ</text><text x="1280" y="888" fill="#a8bac8">лечение</text></g>
+    <g font-size="10.5"></g>
   </g>
 </svg>

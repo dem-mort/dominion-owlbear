@@ -1,5 +1,7 @@
+import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.5.1";
+import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.5.1";
 const PANEL_KEY = "ru.allods.dominion/help-view";
-const guideUrl = new URL("./guide.svg?v=0.4.3", import.meta.url).href;
+const guideUrl = new URL("./guide.svg?v=0.5.1", import.meta.url).href;
 const blankUrl = new URL("./blank.svg", import.meta.url).href;
 const COLORS = { text: "#e8f0f5", muted: "#a8bac8", red: "#ffb0aa", blue: "#9adeff", amber: "#ffd296", green: "#a7e2c4" };
 // Owlbear validates every TextStyle field, including text hidden on an image.
@@ -46,7 +48,7 @@ export function panelFields(state) {
     pets = ready.length ? "Готовы " + ready.join(", ") : state.nextWave < 720 ? "До новой волны " + clock(state.nextWave - state.elapsed) : "Новых волн не будет";
     if (fighting.length) pets += " · бой за " + fighting.join(", ");
   }
-  const fields = [
+  const fields = [...STATIC_FIELDS, ...mapFields(),
     { id: "score-red", text: String(Math.max(0, Math.round(state.score?.red ?? 0))), x: 1088, y: 151, width: 110, height: 46, size: 34, weight: 700, color: COLORS.red },
     { id: "score-blue", text: String(Math.max(0, Math.round(state.score?.blue ?? 0))), x: 1234, y: 151, width: 110, height: 46, size: 34, weight: 700, color: COLORS.blue },
     { id: "status", text: status, x: 1076, y: 228, width: 158, height: 26, size: 12, weight: 600, color: finished ? COLORS[state.winner] ?? COLORS.text : COLORS.muted },
@@ -65,7 +67,7 @@ export function panelFields(state) {
   return fields;
 }
 
-export function boardPanelViews(state, items) {
+export function boardPanelViews(state, items, Command) {
   if (!state || ["Трефа", "Капля", "Звезда"].map(name => items.find(item => item.layer === "PROP" && item.name === name)?.id).join("/") !== state.board) return [];
   const map = items.find(item => item.layer === "MAP" && item.name === "Осколок Силы · Карта");
   if (!map?.image) return [];
@@ -83,11 +85,22 @@ export function boardPanelViews(state, items) {
   const scale = map.scale ?? { x: 1, y: 1 };
   const offset = map.grid?.offset ?? { x: 0, y: 0 };
   const ratio = 150 / (map.grid?.dpi ?? 150);
+  for (const [index, spec] of (Command ? mapPaths(state, Command) : []).entries()) {
+    const dx = -offset.x * scale.x * ratio, dy = -offset.y * scale.y * ratio;
+    result.push({ source: PANEL_KEY + "/" + spec.id, item: {
+      id: map.id, createdUserId: map.createdUserId ?? "unknown", lastModified: map.lastModified, lastModifiedUserId: map.lastModifiedUserId,
+      type: "PATH", name: "Доминион · " + spec.id, layer: "PROP", zIndex: 2000 + index,
+      visible: true, locked: true, disableHit: true,
+      position: { x: map.position.x + dx * Math.cos(angle) - dy * Math.sin(angle), y: map.position.y + dx * Math.sin(angle) + dy * Math.cos(angle) },
+      rotation: map.rotation ?? 0, scale: { x: scale.x * ratio, y: scale.y * ratio },
+      metadata: { [PANEL_KEY]: spec.id }, commands: spec.commands, fillRule: "nonzero", style: spec.style,
+    } });
+  }
   for (const [index, field] of panelFields(state).entries()) {
     const dx = (field.x - offset.x) * scale.x * ratio;
     const dy = (field.y - offset.y) * scale.y * ratio;
     const item = {
-      ...background, name: "Доминион · " + field.id, zIndex: 1001 + index,
+      ...background, name: "Доминион · " + field.id, layer: field.layer ?? "NOTE", zIndex: field.layer === "PROP" ? 3000 + index : 1001 + index,
       image: { url: blankUrl, mime: "image/svg+xml", width: field.width, height: field.height },
       grid: { dpi: map.grid?.dpi ?? 150, offset: { x: 0, y: 0 } },
       position: { x: map.position.x + dx * Math.cos(angle) - dy * Math.sin(angle), y: map.position.y + dx * Math.sin(angle) + dy * Math.cos(angle) },

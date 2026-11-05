@@ -153,7 +153,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
     const roundKey = combat.id + "/" + combat.round;
     if (combatPressed?.key !== roundKey) combatPressed = null;
     const prompt = combatPrompt(combat, pawn, mine, state.elapsed, Boolean(combatPressed));
-    text("combat-title", (combat.kind === "pet" ? "За баф " : "За ") + combat.name);
+    text("combat-title", (combat.kind === "pet" ? "Баф: " : "Бой: ") + combat.name);
     text("combat-seconds", Math.ceil(prompt.remaining));
     text("combat-clock", prompt.state === "ready" ? "Следующий сигнал" : "Время на действие");
     text("combat-round", combat.round + "/" + COMBAT_STEPS);
