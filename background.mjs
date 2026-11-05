@@ -211,8 +211,21 @@ export async function initialize(OBR, Command) {
 
   if (host) {
     OBR.broadcast.onMessage(command, ({ connectionId, data }) => {
-      if (!data || !board || state?.host !== connection || data.board !== board.key) return;
+      if (!data || !board || data.board !== board.key) return;
       const local = connectionId === connection;
+      // Only this GM's own connection may acquire an idle lobby. A player or
+      // another GM's broadcast cannot acquire it through this handler.
+      if (data.type === "take-host") {
+        if (!local || match || state?.phase !== "lobby" || pending.length >= 48) return;
+        pending.push(async () => {
+          if (match || state?.phase !== "lobby") return;
+          claims = plainCopy(state.claims);
+          aspects = { ...state.aspects };
+          await publish();
+        });
+        return;
+      }
+      if (state?.host !== connection) return;
       if (data.type === "combat-click") {
         if (match?.pawns[data.id]?.claim?.connection !== connectionId) return;
         combatClick(match, data.id, data.combat, data.round);

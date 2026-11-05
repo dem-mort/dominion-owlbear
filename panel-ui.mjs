@@ -140,13 +140,15 @@ export function createPanel({ root = document, connection, name, host, send }) {
     }
     text("count", count);
     element("release").disabled = waiting;
-    element("start-form").hidden = !hostControls;
-    element("start").disabled = waiting || count === 0;
-    element("practice").hidden = !hostControls;
-    element("practice").disabled = waiting || count !== 0;
+    element("start-form").hidden = !host;
+    element("start").disabled = !hostControls || waiting || count === 0;
+    element("take-host").hidden = !host || hostControls;
+    element("take-host").disabled = waiting;
+    element("practice").hidden = !host;
+    element("practice").disabled = !hostControls || waiting || count !== 0;
     element("practice").title = count ? "Тренировка доступна, когда все фишки свободны" : "Начать одному за воина К1";
-    element("waiting-host").hidden = hostControls;
-    text("start-help", hostControls ? count ? count + "/12 игроков готовы · до 1000 очков" : "Для старта нужен хотя бы один персонаж" : ownSlot ? "Ты готов · после старта появишься на респе" : "Выбери персонажа своей команды");
+    element("waiting-host").hidden = host;
+    text("start-help", host && !hostControls ? "Управление сейчас в другой вкладке ведущего" : hostControls ? count ? count + "/12 игроков готовы · до 1000 очков" : "Для старта нужен хотя бы один персонаж" : ownSlot ? "Ты готов · после старта появишься на респе" : "Выбери персонажа своей команды");
   }
 
   function renderCombat(combat, pawn, mine) {
@@ -254,6 +256,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
     void run({ type: "start", routeSeconds: value ? Number(value) : null });
   });
   element("practice").addEventListener("click", () => void run({ type: "start", practice: true }));
+  element("take-host").addEventListener("click", () => void run({ type: "take-host" }));
   element("release").addEventListener("click", () => void run({ type: "release", id: own() }));
   element("practice-opponent").addEventListener("click", () => void run({ type: "practice-opponent" }));
   for (const button of pointButtons) button.addEventListener("click", () => { requestedPoint = button.dataset.point; void run({ type: "move-to-point", id: own(), point: button.dataset.point }); });

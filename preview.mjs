@@ -1,4 +1,4 @@
-import { createPanel } from "./panel-ui.mjs?v=0.5.1";
+import { createPanel } from "./panel-ui.mjs?v=0.5.2";
 const classes = ["Воин", "Храмовник", "Разведчик", "Жрец", "Маг", "Бард"];
 const slots = ["К", "С"].flatMap(prefix => classes.map((name, index) => ({ id: prefix + (index + 1), name: prefix + (index + 1) + " · " + name, team: prefix === "К" ? "red" : "blue" })));
 const aspects = Object.fromEntries(slots.map(slot => [slot.id, slot.name.endsWith("Жрец") ? "heal" : slot.name.endsWith("Бард") ? "support" : "attack"]));
@@ -23,6 +23,7 @@ async function send(command) {
   if (command.type === "claim") { for (const [id, claim] of Object.entries(current.claims)) if (claim.connection === "local") delete current.claims[id]; current.claims[command.id] = { connection: "local", name: "Игрок" }; }
   if (command.type === "release") delete current.claims[command.id];
   if (command.type === "set-aspect") current.aspects[command.id] = command.aspect;
+  if (command.type === "take-host") current.host = "local";
   if (command.type === "combat-click") current.combats[0].ready.push(command.id);
   if (command.type === "retreat") { current.pawns[mine].retreating = true; current.combats = []; }
   if (command.type === "move-to-point") { current.pawns[mine].moving = true; current.combats = []; }
