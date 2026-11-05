@@ -1,4 +1,4 @@
-import { createPanel } from "./panel-ui.mjs?v=0.5.2";
+import { createPanel } from "./panel-ui.mjs?v=0.5.3";
 const classes = ["Воин", "Храмовник", "Разведчик", "Жрец", "Маг", "Бард"];
 const slots = ["К", "С"].flatMap(prefix => classes.map((name, index) => ({ id: prefix + (index + 1), name: prefix + (index + 1) + " · " + name, team: prefix === "К" ? "red" : "blue" })));
 const aspects = Object.fromEntries(slots.map(slot => [slot.id, slot.name.endsWith("Жрец") ? "heal" : slot.name.endsWith("Бард") ? "support" : "attack"]));

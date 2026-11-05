@@ -28,6 +28,10 @@ export function scenePortraits(items) {
     return image?.url ? [[item.id, image.url]] : [];
   }));
 }
+export function displayedCombat(state, pawn, mine) {
+  if (state.phase !== "playing" || !pawn || pawn.deadUntil) return undefined;
+  return state.combats?.find(fight => fight.members.includes(mine));
+}
 
 export function createPanel({ root = document, connection, name, host, send }) {
   const element = id => root.getElementById(id);
@@ -198,7 +202,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
     lastLobby = "";
     const finished = state.phase === "finished", pawn = state.pawns[mine];
     const dead = Boolean(pawn?.deadUntil);
-    const combat = !finished && !dead && state.combats?.find(fight => fight.members.includes(mine));
+    const combat = displayedCombat(state, pawn, mine);
     const canMove = !finished && Boolean(pawn) && !dead;
     const role = ASPECTS[pawn?.aspect ?? "attack"];
     text("timer", timer(TOTAL - state.elapsed)); text("red-score", state.score.red); text("blue-score", state.score.blue);
@@ -213,7 +217,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
     if (wasMoving && !pawn?.moving) requestedPoint = null;
     wasMoving = Boolean(pawn?.moving);
     element("health-row").hidden = !pawn; element("health").value = pawn?.hp ?? 0; text("health-label", (pawn?.hp ?? 0) + "/100");
-    element("pet-charge").hidden = !pawn?.pet && !combat?.empowered.includes(mine);
+    element("pet-charge").hidden = !pawn?.pet && !combat?.empowered?.includes(mine);
     element("combat").hidden = !combat;
     if (combat) renderCombat(combat, pawn, mine); else { combatPressed = null; lastCombat = null; text("combat-score", ""); }
     text("points-heading", canMove ? combat ? "Сменить точку / выйти из боя" : "Куда бежать?" : "Контроль точек");
@@ -233,7 +237,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
     text("pets", (ready.length ? "Готовы: " + ready.join(", ") : state.nextWave < TOTAL ? "Новая волна через " + timer(state.nextWave - state.elapsed) : "Новых волн не будет") + (contested.length ? " · бой за " + contested.join(", ") : ""));
     const clash = state.lastClash;
     element("clash").hidden = !clash;
-    if (clash) text("clash", clash.point + " · " + TEAM_NAME[clash.winner] + (clash.reason === "retreat" ? " · соперник ушёл" : "") + (clash.inactive?.includes(mine) ? " · поражение без действий" : ""));
+    if (clash) text("clash", clash.point + " · " + TEAM_NAME[clash.winner] + (clash.reason === "retreat" ? " · выход с точки" : "") + (clash.inactive?.includes(mine) ? " · поражение без действий" : ""));
     text("pace", (state.calibrated ? "Скорость по замеру" : "Пробный темп") + " · респ → Капля за " + state.routeSeconds + " с");
     element("practice-opponent").hidden = !state.practice || !hostControls;
     element("practice-opponent").disabled = Boolean(state.practiceOpponent) || waiting || finished;
