@@ -1,6 +1,7 @@
 import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.5.1";
 import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.5.1";
-import { modeOf } from "./control.mjs?v=0.6.1";
+import { modeOf } from "./control.mjs?v=0.7.0";
+import { captureStatus } from "./rules.mjs?v=0.7.0";
 const PANEL_KEY = "ru.allods.dominion/help-view";
 const guideUrl = new URL("./guide.svg?v=0.5.1", import.meta.url).href;
 const blankUrl = new URL("./blank.svg", import.meta.url).href;
@@ -19,21 +20,27 @@ function clock(seconds) {
 
 function pointStatus(state, name) {
   const point = state.points?.find(point => point.name === name);
+  const capture = point && captureStatus(point);
+  if (capture) return { text: capture, color: COLORS.amber };
   if (state.combats?.some(combat => combat.kind === "point" && combat.name === name)) return { text: "Оспаривается", color: COLORS.amber };
-  if (point?.progress > 0) return { text: (point.team ? "Снятие " : "Захват ") + Math.min(10, Math.ceil(point.progress)) + "/10 с", color: COLORS.amber };
   return point?.team ? { text: point.team === "red" ? "Красные" : "Синие", color: COLORS[point.team] } : { text: "Свободна", color: COLORS.muted };
 }
 
 export function panelFields(state) {
   const playing = state.phase === "playing";
+  const preparing = state.phase === "preparing";
   const finished = state.phase === "finished";
   const mode = modeOf(state), people = new Set(Object.values(state.claims ?? {}).map(claim => claim.connection)).size;
   const lobby = mode === "teams" ? "Команды · " + people + "/2" : mode === "solo" ? "Тест · " + people + "/1" : "Лобби · " + Object.keys(state.claims ?? {}).length + "/12";
   const status = finished ? state.winner === "draw" ? "Матч завершён · ничья" : "Победа " + (state.winner === "red" ? "красных" : "синих")
-    : playing ? state.practice ? "Тренировка" : mode === "solo" ? "Один за 12" : mode === "teams" ? "Игрок против игрока" : "Матч идёт" : lobby;
-  const steps = playing ? [
+    : preparing ? "Подготовка " + clock(state.preparation?.remaining) : playing ? state.practice ? "Тренировка" : mode === "solo" ? "Один за 12" : mode === "teams" ? "Игрок против игрока" : "Матч идёт" : lobby;
+  const steps = preparing ? [
+    ["Распределите пары", "Договоритесь о флангах и центре."],
+    ["Приготовьтесь к разбежке", "Таймер матча ещё не идёт."],
+    ["Можно начать раньше", "Нужно согласие всех участников."],
+  ] : playing ? [
     ["Выбери точку назначения", "Кнопка точки запускает бег."],
-    ["Удерживай круг", "10 с без врагов. Чужую сначала сбей."],
+    ["Удерживай круг", "12 с без врагов · перевес 2: 30 с"],
     ["Следи за панелью боя", "Клик раз в 3 с. Можно отступить."],
   ] : finished ? [
     ["Посмотри итоговый счёт", "Победитель указан под счётом."],
@@ -56,7 +63,7 @@ export function panelFields(state) {
     { id: "score-blue", text: String(Math.max(0, Math.round(state.score?.blue ?? 0))), x: 1234, y: 151, width: 110, height: 46, size: 34, weight: 700, color: COLORS.blue },
     { id: "status", text: status, x: 1076, y: 228, width: 158, height: 26, size: 12, weight: 600, color: finished ? COLORS[state.winner] ?? COLORS.text : COLORS.muted },
     { id: "timer", text: clock(720 - (state.elapsed ?? 0)), x: 1252, y: 226, width: 102, height: 31, size: 23, weight: 700, align: "RIGHT" },
-    { id: "steps-title", text: playing ? "ЧТО ДЕЛАТЬ СЕЙЧАС" : finished ? "МАТЧ ЗАВЕРШЁН" : "КАК НАЧАТЬ", x: 1076, y: 286, width: 278, height: 22, size: 11, weight: 700, color: COLORS.muted },
+    { id: "steps-title", text: preparing ? "ПОДГОТОВКА К МАТЧУ" : playing ? "ЧТО ДЕЛАТЬ СЕЙЧАС" : finished ? "МАТЧ ЗАВЕРШЁН" : "КАК НАЧАТЬ", x: 1076, y: 286, width: 278, height: 22, size: 11, weight: 700, color: COLORS.muted },
     { id: "pets", text: pets, x: 1088, y: 677, width: 254, height: 24, size: 12, color: (state.pets ?? []).some(pet => pet.available && !pet.fighting) ? COLORS.green : COLORS.muted },
   ];
   for (const [index, step] of steps.entries()) {

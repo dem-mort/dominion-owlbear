@@ -21,6 +21,23 @@ const BLUE = { x: 559, y: 656 };
 const DROP = { x: 523, y: 427 };
 export const DEFAULT_ROUTE_SECONDS = 10;
 
+// The no-opponent stage is twelve seconds. Applying the same normalized stage
+// to neutralization is an explicit tabletop adaptation, not a live-client test.
+export function captureRate(attackers, defenders) {
+  if (attackers > 0 && defenders === 0) return 100 / 12;
+  if (attackers === 0 && defenders > 0) return -100 / 12;
+  if (attackers - defenders >= 2) return 100 / 30;
+  if (defenders - attackers >= 2) return -100 / 30;
+  return 0;
+}
+
+export function captureStatus(point) {
+  if (!Number.isFinite(point?.progress) || point.progress <= 0) return "";
+  const percent = Math.max(1, Math.min(100, Math.round(point.progress)));
+  const action = point.captureRate < 0 ? "Откат" : point.team ? "Снятие" : "Захват";
+  return action + " " + percent + "%";
+}
+
 export function distance(a, b) {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
@@ -74,7 +91,7 @@ export function newMatch(board, claims, routeSeconds, calibrated) {
   return {
     board, pawns, routeSeconds, calibrated, elapsed: 0,
     speed: distance(board.spawn.red, board.points[1].position) / routeSeconds,
-    points: board.points.map(point => ({ ...point, team: null, progress: 0, capturing: null, clash: 0 })),
+    points: board.points.map(point => ({ ...point, team: null, progress: 0, capturing: null, captureRate: 0, clash: 0 })),
     pets: board.pets.map(pet => ({ ...pet, available: false, pickup: null, progress: 0 })),
     score: { red: 0, blue: 0 }, nextScore: 30, nextWave: WAVE_FIRST,
     nextCombat: 0, combatRevision: 0,
@@ -92,6 +109,27 @@ function occupants(match, area) {
   return sides;
 }
 
+function advanceCapture(point, sides, elapsed) {
+  let attacker = point.team ? point.team === "red" ? "blue" : "red" : point.capturing;
+  if (!attacker) {
+    if (captureRate(sides.red.length, sides.blue.length) > 0) attacker = "red";
+    else if (captureRate(sides.blue.length, sides.red.length) > 0) attacker = "blue";
+  }
+  if (!attacker) { point.captureRate = 0; return; }
+  const defender = attacker === "red" ? "blue" : "red";
+  point.capturing = attacker;
+  point.captureRate = captureRate(sides[attacker].length, sides[defender].length);
+  point.progress = Math.max(0, Math.min(100, point.progress + point.captureRate * elapsed));
+  if (point.progress >= 100 - 1e-8) {
+    point.team = point.team ? null : attacker;
+    point.progress = 0;
+    point.capturing = point.team ? null : attacker;
+  } else if (point.progress <= 1e-8) {
+    point.progress = 0;
+    point.capturing = null;
+  }
+}
+
 export function tick(match, elapsed, die = () => 1 + Math.floor(Math.random() * 6)) {
   if (match.winner || elapsed <= 0) return;
   match.elapsed = Math.min(TOTAL, match.elapsed + elapsed);
@@ -107,18 +145,10 @@ export function tick(match, elapsed, die = () => 1 + Math.floor(Math.random() * 
   }
   for (const point of match.points) {
     const sides = occupants(match, point);
-    if (combatTick(match, point, sides, "point", die)) continue;
-    const team = sides.red.length ? "red" : sides.blue.length ? "blue" : null;
-    if (!team || team === point.team || point.capturing !== team) {
-      point.progress = 0;
-      point.capturing = team;
-    }
-    if (!team || team === point.team) continue;
-    point.progress += elapsed;
-    if (point.progress >= 10) {
-      point.team = point.team ? null : team;
-      point.progress = 0;
-    }
+    combatTick(match, point, sides, "point", die);
+    // Combat can remove dead participants on this tick. Capture uses the living
+    // roster after resolution and continues during numerical superiority.
+    advanceCapture(point, occupants(match, point), elapsed);
   }
   if (match.elapsed >= match.nextWave) {
     match.nextWave += WAVE_INTERVAL;

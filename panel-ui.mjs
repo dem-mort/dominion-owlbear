@@ -1,5 +1,5 @@
-import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, COMBAT_STEPS } from "./rules.mjs?v=0.4.0";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.6.1";
+import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, COMBAT_STEPS, captureStatus } from "./rules.mjs?v=0.7.0";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.7.0";
 
 const ASPECT_LABEL = { attack: "Нападение", support: "Поддержка", heal: "Исцеление" };
 const ACTION_LABEL = { attack: "Атаковать", support: "Поддержать", heal: "Лечить" };
@@ -11,6 +11,16 @@ export function panelContext(state, connection, host) {
   const mine = activeId(state, connection);
   const slot = state.slots.find(slot => slot.id === mine);
   return { mine, slot, count: Object.keys(state.claims ?? {}).length, hostControls: host && state.host === connection };
+}
+export function preparationPrompt(state, connection) {
+  if (state?.phase !== "preparing") return null;
+  const preparation = state.preparation ?? {};
+  const required = [...new Set(preparation.required ?? [])];
+  const ready = new Set((preparation.ready ?? []).filter(id => required.includes(id)));
+  const eligible = required.includes(connection) && ownedIds(state, connection).length > 0;
+  return { remaining: timer(preparation.remaining), readyCount: ready.size, requiredCount: required.length,
+    eligible, ready: eligible && ready.has(connection), disabled: !eligible || ready.has(connection),
+    button: ready.has(connection) && eligible ? "Ты готов ✓" : "Начать раньше" };
 }
 export function combatPrompt(combat, pawn, mine, elapsed, pressed) {
   const remaining = Math.max(0, combat.endsAt - elapsed);
@@ -233,9 +243,9 @@ export function createPanel({ root = document, connection, name, host, send }) {
       scope.replaceChildren(...groups.map(group => { const option = make("option", "", group.text); option.value = group.value; return option; }));
     }
     if (current === "custom" && !scope.querySelector('option[value="custom"]')) { const option = make("option", "", "Группа · " + chosen.length); option.value = "custom"; option.disabled = true; scope.append(option); }
-    scope.value = current; scope.disabled = waiting || state.phase === "finished";
+    scope.value = current; scope.disabled = waiting || state.phase !== "playing";
     const alive = chosen.filter(id => state.pawns[id] && !state.pawns[id].deadUntil).length;
-    text("selection-summary", "Приказ для " + chosen.length + " · в строю " + alive + ". «Бег» на карте управляет тем же выбором.");
+    text("selection-summary", state.phase === "preparing" ? "Можно посмотреть своих персонажей. Движение откроется после подготовки." : "Приказ для " + chosen.length + " · в строю " + alive + ". «Бег» на карте управляет тем же выбором.");
   }
 
   function renderFightTabs(fights, focused) {
@@ -293,7 +303,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
   }
 
   function render() {
-    const compatible = state?.rules === "0.6.1";
+    const compatible = state?.rules === "0.7.0";
     element("loading").hidden = compatible;
     element("lobby").hidden = !compatible || state.phase !== "lobby";
     element("playing").hidden = !compatible || state.phase === "lobby";
@@ -303,27 +313,38 @@ export function createPanel({ root = document, connection, name, host, send }) {
     }
     const context = panelContext(state, connection, host);
     const { mine, slot, hostControls } = context;
-    text("phase", state.phase === "lobby" ? "Лобби" : state.phase === "finished" ? "Итог" : state.practice ? "Тренировка" : "Матч идёт");
+    text("phase", state.phase === "lobby" ? "Лобби" : state.phase === "preparing" ? "Подготовка" : state.phase === "finished" ? "Итог" : state.practice ? "Тренировка" : "Матч идёт");
     if (state.phase === "lobby") { requestedPoint = null; wasMoving = false; lastSelectionKey = ""; combatPressed.clear(); lastCombat = null; focusedCombatId = null; renderLobby(context); return; }
     lastLobby = "";
-    const finished = state.phase === "finished", pawn = state.pawns[mine];
+    const finished = state.phase === "finished", preparing = state.phase === "preparing", pawn = state.pawns[mine];
     const dead = Boolean(pawn?.deadUntil);
     const fights = myFights(), combat = focusedFight(), chosen = selectedIds(state, connection);
     const selectionKey = JSON.stringify([mine, chosen]);
     if (selectionKey !== lastSelectionKey) { requestedPoint = null; wasMoving = false; lastSelectionKey = selectionKey; }
     const mobile = chosen.filter(id => state.pawns[id] && !state.pawns[id].deadUntil);
-    const canMove = !finished && mobile.length > 0;
+    const canMove = state.phase === "playing" && mobile.length > 0;
     for (const key of combatPressed) if (!fights.some(fight => key === fight.id + "/" + fight.round)) combatPressed.delete(key);
     renderMultiControls(context); renderFightTabs(fights, combat);
     const role = ASPECTS[pawn?.aspect ?? "attack"];
-    text("timer", timer(TOTAL - state.elapsed)); text("red-score", state.score.red); text("blue-score", state.score.blue);
+    text("timer", timer(preparing ? TOTAL : TOTAL - state.elapsed)); text("red-score", state.score.red); text("blue-score", state.score.blue);
+    const preparation = preparationPrompt(state, connection);
+    element("preparation-card").hidden = !preparation;
+    if (preparation) {
+      text("preparation-timer", preparation.remaining);
+      text("preparation-status", "Матч начнётся через " + preparation.remaining);
+      text("preparation-ready", "Готовы " + preparation.readyCount + "/" + preparation.requiredCount);
+      text("preparation-help", preparation.eligible ? "Если все игроки готовы, матч начнётся раньше." : "Ожидаем готовность игроков. Можно осмотреть карту.");
+      element("ready-early").hidden = !preparation.eligible;
+      element("ready-early").disabled = waiting || preparation.disabled;
+      text("ready-early", preparation.button);
+    }
     element("winner-card").hidden = !finished;
     text("winner", state.winner === "draw" ? "Ничья" : "Победа: " + (TEAM_NAME[state.winner] ?? ""));
     element("restart").hidden = !finished || !hostControls; element("restart").disabled = waiting;
     element("player-card").dataset.dead = String(dead && !mobile.length && !combat);
     text("me", slot ? slot.name : "Режим зрителя");
     text("player-state", pawn ? dead ? pawn.deathReason === "inactive" ? "Поражение без действий" : "Персонаж погиб" : role.short + " · " + role.help : "Присоединиться можно в следующем матче");
-    text("control", finished ? "" : !pawn ? "Наблюдай за точками и счётом" : combat ? "Стычка: " + combat.name + " · действие ниже" : chosen.length > 1 ? "Приказ для " + mobile.length + " живых из " + chosen.length : dead ? "Возрождение через " + Math.max(0, Math.ceil(pawn.deadUntil - state.elapsed)) + " с"
+    text("control", finished ? "" : preparing ? "Осмотри карту. Движение и бой начнутся после подготовки." : !pawn ? "Наблюдай за точками и счётом" : combat ? "Стычка: " + combat.name + " · действие ниже" : chosen.length > 1 ? "Приказ для " + mobile.length + " живых из " + chosen.length : dead ? "Возрождение через " + Math.max(0, Math.ceil(pawn.deadUntil - state.elapsed)) + " с"
       : pawn.retreating ? "Отступаю к своему респу" : pawn.moving ? requestedPoint ? "Бегу: " + requestedPoint : "Персонаж в пути" : "Выбери точку — персонаж побежит сам");
     if (wasMoving && !pawn?.moving) requestedPoint = null;
     wasMoving = Boolean(pawn?.moving);
@@ -333,12 +354,14 @@ export function createPanel({ root = document, connection, name, host, send }) {
     if (combat) renderCombat(combat); else { lastCombat = null; text("combat-score", ""); }
     const selectedInFight = combat && chosen.some(id => combat.members.includes(id));
     text("points-heading", canMove ? selectedInFight ? "Сменить точку / выйти из боя" : "Куда бежать?" : "Контроль точек");
-    text("move-label", canMove ? chosen.length > 1 ? "За " + mobile.length + " персонажей" : selectedInFight ? "" : "Нажми точку" : dead ? "После респа" : "Обзор");
+    text("move-label", canMove ? chosen.length > 1 ? "За " + mobile.length + " персонажей" : selectedInFight ? "" : "Нажми точку" : preparing ? "После подготовки" : dead ? "После респа" : "Обзор");
     element("free-move").hidden = !canMove;
     for (const button of pointButtons) {
       const point = state.points.find(point => point.name === button.dataset.point);
       const fight = state.combats?.find(combat => combat.kind === "point" && combat.name === point.name);
-      const status = fight ? "Идёт бой" : point.progress > 0 ? (point.team ? "Снятие " : "Захват ") + Math.ceil(point.progress) + "/10 с" : point.team ? TEAM_NAME[point.team] : "Свободна";
+      const capture = captureStatus(point), rate = Number.isFinite(point.captureRate) ? point.captureRate : 0;
+      const speed = rate === 0 ? "пауза" : (rate > 0 ? "+" : "") + rate.toFixed(2).replace(".", ",") + " п.п./с";
+      const status = capture ? capture + " · " + speed : fight ? "Идёт бой" : point.team ? TEAM_NAME[point.team] : "Свободна";
       button.disabled = !canMove || waiting;
       button.dataset.owner = point.team ?? ""; button.dataset.contested = String(Boolean(fight) || point.progress > 0);
       button.querySelector(".point-status").textContent = status;
@@ -351,10 +374,12 @@ export function createPanel({ root = document, connection, name, host, send }) {
     element("clash").hidden = !clash;
     if (clash) text("clash", clash.point + " · " + TEAM_NAME[clash.winner] + (clash.reason === "retreat" ? " · выход с точки" : "") + (clash.inactive?.includes(mine) ? " · поражение без действий" : ""));
     text("pace", (state.calibrated ? "Скорость по замеру" : "Пробный темп") + " · респ → Капля за " + state.routeSeconds + " с");
-    element("practice-opponent").hidden = !state.practice || !hostControls;
-    element("practice-opponent").disabled = Boolean(state.practiceOpponent) || waiting || finished;
+    element("practice-opponent").hidden = !state.practice || !hostControls || preparing;
+    element("practice-opponent").disabled = Boolean(state.practiceOpponent) || waiting || state.phase !== "playing";
     text("practice-opponent", state.practiceOpponent ? "Соперник направлен к Капле" : "Добавить соперника к Капле");
     element("stop").hidden = finished || !hostControls; element("stop-match").disabled = waiting;
+    element("recovery").hidden = !host || hostControls || !["preparing", "playing", "finished"].includes(state.phase);
+    element("recover-lobby").disabled = waiting;
   }
 
   async function run(data) {
@@ -384,9 +409,13 @@ export function createPanel({ root = document, connection, name, host, send }) {
     if (ids.length) void run({ type: "select-pawns", ids, id: ids.includes(own()) ? own() : ids[0] });
   });
   element("take-host").addEventListener("click", () => void run({ type: "take-host" }));
+  element("ready-early").addEventListener("click", () => {
+    const prompt = preparationPrompt(state, connection);
+    if (prompt && !prompt.disabled) void run({ type: "ready-early" });
+  });
   element("release").addEventListener("click", () => void run({ type: "release", id: own() }));
   element("practice-opponent").addEventListener("click", () => void run({ type: "practice-opponent" }));
-  for (const button of pointButtons) button.addEventListener("click", () => { requestedPoint = button.dataset.point; void run({ type: "move-to-point", id: own(), ids: selectedIds(state, connection), point: button.dataset.point }); });
+  for (const button of pointButtons) button.addEventListener("click", () => { if (state?.phase !== "playing") return; requestedPoint = button.dataset.point; void run({ type: "move-to-point", id: own(), ids: selectedIds(state, connection), point: button.dataset.point }); });
   element("combat-action").addEventListener("click", async () => {
     const combat = focusedFight();
     if (!combat || waiting) return;
@@ -399,13 +428,17 @@ export function createPanel({ root = document, connection, name, host, send }) {
     render();
   });
   element("retreat").addEventListener("click", () => {
+    if (state?.phase !== "playing") return;
     const combat = focusedFight(), ids = combat?.members.filter(id => state.claims[id]?.connection === connection) ?? selectedIds(state, connection);
     if (ids.length) void run({ type: "retreat", id: ids[0], ids });
   });
   element("restart").addEventListener("click", () => void run({ type: "lobby" }));
   element("stop-match").addEventListener("click", () => { element("stop").open = false; void run({ type: "lobby" }); });
+  element("recover-lobby").addEventListener("click", () => {
+    if (host && !panelContext(state, connection, host).hostControls && ["preparing", "playing", "finished"].includes(state.phase)) void run({ type: "recover-lobby" });
+  });
   return {
-    update(next) { const changedBoard = state?.board !== next?.board; state = next; if (changedBoard) { lastLobby = ""; lastMine = null; selectedTeam = "red"; selectTeam("red"); } render(); },
+    update(next) { const changedBoard = state?.board !== next?.board, enteringPreparation = next?.phase === "preparing" && state?.phase !== "preparing"; state = next; if (changedBoard) { lastLobby = ""; lastMine = null; selectedTeam = "red"; selectTeam("red"); } if (enteringPreparation) element("play-scroll").scrollTop = 0; render(); },
     portraits(next) { if (JSON.stringify(portraits) === JSON.stringify(next)) return; portraits = next; if (state?.phase === "lobby") render(); },
     disconnected(message) { text("loading-help", message); },
   };

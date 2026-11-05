@@ -1,5 +1,5 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.6.1";
-import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.4.0";
+import { boardPanelViews } from "./board-panel.mjs?v=0.7.0";
+import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.7.0";
 
 export const HOME_KEY = NS + "/lobby-position";
 export const PAWN_KEY = NS + "/pawn";
@@ -13,7 +13,7 @@ export function originalItem(item) {
 }
 
 export function visiblePawns(state, items, connection, role) {
-  if (!state || !["playing", "finished"].includes(state.phase)) return [];
+  if (!state || !["preparing", "playing", "finished"].includes(state.phase)) return [];
   const sources = new Map(items.map(item => [item.id, item]));
   const owned = state.slots.filter(slot => state.claims[slot.id]?.connection === connection);
   const viewer = owned[0];

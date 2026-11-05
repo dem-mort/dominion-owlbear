@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Доминион</title>
-<link rel="stylesheet" href="./panel.css?v=0.6.1">
+<link rel="stylesheet" href="./panel.css?v=0.7.0">
 <main class="app">
   <header class="app-header">
     <div><div class="eyebrow">ДОМИНИОН / 6×6</div><h1>Осколок Силы</h1></div>
@@ -50,6 +50,13 @@
       <div class="score blue"><span>Синие</span><strong id="blue-score">0</strong></div>
     </div>
     <div id="play-scroll" class="screen-body play-body">
+      <section id="preparation-card" class="preparation-card" hidden aria-labelledby="preparation-title">
+        <div class="preparation-heading"><div><span class="eyebrow">ПЕРЕД СТАРТОМ</span><h2 id="preparation-title">Подготовка</h2></div><time id="preparation-timer">1:00</time></div>
+        <p id="preparation-status" role="status">Матч начнётся через 1:00</p>
+        <p id="preparation-ready" class="preparation-ready">Готовы 0/0</p>
+        <button id="ready-early" type="button" class="primary">Начать раньше</button>
+        <p id="preparation-help" class="fine">Если все игроки готовы, матч начнётся раньше.</p>
+      </section>
       <section id="winner-card" class="winner-card" hidden><h2 id="winner" role="status"></h2><p class="fine">Матч завершён</p><button id="restart" type="button" class="primary" hidden>Вернуться в лобби</button></section>
       <section id="multi-controls" class="multi-controls" hidden><div class="section-heading"><h2>Твои персонажи</h2><span id="owned-count" class="fine"></span></div><div class="multi-fields"><div><label for="active-pawn">Персонаж</label><select id="active-pawn"></select></div><div><label for="move-scope">Приказ движения</label><select id="move-scope"></select></div></div><p id="selection-summary" class="fine"></p></section>
       <section id="player-card" class="player-card" aria-label="Твой персонаж">
@@ -84,9 +91,10 @@
       <button id="practice-opponent" class="secondary practice-opponent" type="button" hidden>Добавить соперника к Капле</button>
       <details class="disclosure"><summary>Детали матча</summary><p id="pace" class="fine"></p><p class="fine">Союзники видны всегда. Враги появляются рядом.</p><p class="fine">Два пропуска действий подряд — поражение. После смерти: 25 с на своём респе.</p><p id="combat-score" class="fine"></p></details>
       <details id="stop" class="disclosure" hidden><summary>Управление матчем</summary><button id="stop-match" type="button" class="danger">Остановить матч</button><p class="fine">Все вернутся в лобби, счёт обнулится.</p></details>
+      <details id="recovery" class="disclosure recovery" hidden><summary>Восстановить управление</summary><p class="fine">Прерывание вернёт всех в лобби. Прогресс матча и счёт будут сброшены.</p><button id="recover-lobby" type="button" class="danger">Прервать матч и вернуть лобби</button></details>
     </div>
   </section>
   <p id="notice" role="status" class="notice" hidden></p>
 </main>
-<script type="module" src="./panel.mjs?v=0.6.1"></script>
+<script type="module" src="./panel.mjs?v=0.7.0"></script>
 </html>

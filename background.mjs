@@ -1,6 +1,6 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.4.0";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.6.1";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.6.1";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.7.0";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.7.0";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.7.0";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -24,6 +24,7 @@ export async function initialize(OBR, Command) {
   const host = role === "GM";
   let board = null;
   let match = null;
+  let preparation = null;
   let claims = {};
   let aspects = {};
   let controlMode = "individual";
@@ -73,7 +74,7 @@ export async function initialize(OBR, Command) {
     return controlMode === "individual" ? name || code : code + (name ? " · " + name : "");
   }
   async function syncLobbyLabels() {
-    if (!sceneReady || !board || match) return;
+    if (!sceneReady || !board || match || state?.host !== connection) return;
     const labels = new Map(board.slots.map(slot => [slot.id, lobbyLabel(slot)]));
     const changed = sceneItems.filter(item => labels.has(item.id) && item.text?.type === "PLAIN" && item.text.plainText !== labels.get(item.id));
     if (!changed.length) return;
@@ -84,12 +85,18 @@ export async function initialize(OBR, Command) {
 
   OBR.room.onMetadataChange(metadata => {
     state = metadata[stateKey];
+    if (match && state?.host !== connection) {
+      match = null;
+      preparation = null;
+      pending.length = 0;
+    }
     updateLocal();
   });
   state = (await OBR.room.getMetadata())[stateKey];
 
-  async function publish() {
+  async function publish(acquire = false) {
     if (!sceneReady) return;
+    if (!acquire && board && state?.board === board.key && state.host !== connection) return;
     if (!board) {
       if (state?.host === connection) await OBR.room.setMetadata({ [stateKey]: undefined });
       return;
@@ -97,11 +104,16 @@ export async function initialize(OBR, Command) {
     lastPublish = clock();
     normalizeSelection();
     const snapshot = {
-      rules: "0.6.1",
+      rules: "0.7.0",
       board: board.key, host: connection,
       slots: board.slots.map(({ id, name, team }) => ({ id, name, team })),
       claims: { ...claims }, aspects: { ...aspects }, controlMode, active: { ...active }, selections: plainCopy(selections),
-      phase: !match ? "lobby" : match.winner ? "finished" : "playing",
+      phase: !match ? "lobby" : preparation ? "preparing" : match.winner ? "finished" : "playing",
+    };
+    if (preparation) snapshot.preparation = {
+      remaining: preparation.remaining,
+      ready: [...preparation.ready],
+      required: [...new Set(Object.values(claims).map(claim => claim.connection))],
     };
     if (match) {
       Object.assign(snapshot, {
@@ -111,7 +123,7 @@ export async function initialize(OBR, Command) {
         combats: combatViews(match), practice: Boolean(match.practice), practiceOpponent: Boolean(match.practiceOpponent),
         routeSeconds: match.routeSeconds, calibrated: match.calibrated,
         sightRadius: SIGHT_RADIUS * board.scale,
-        points: match.points.map(({ name, team, clash, progress, capturing }) => ({ name, team, clash, progress, capturing })),
+        points: match.points.map(({ name, team, clash, progress, capturing, captureRate }) => ({ name, team, clash, progress, capturing, captureRate })),
         pets: match.pets.map(({ name, available, combat }) => ({ name, available, fighting: Boolean(combat) })),
         pawns: Object.fromEntries(Object.values(match.pawns)
           .filter(pawn => pawn.claim)
@@ -220,6 +232,7 @@ export async function initialize(OBR, Command) {
     }
     const savedLobby = board && state?.board === board.key && state.phase === "lobby" ? state : null;
     match = null;
+    preparation = null;
     if (savedLobby) restoreControls(savedLobby);
     else {
       controlMode = state?.board === board?.key ? modeOf(state) : "individual";
@@ -260,6 +273,7 @@ export async function initialize(OBR, Command) {
       }
     });
     match = null;
+    preparation = null;
     publishedItems.clear();
     await publish();
   }
@@ -283,6 +297,22 @@ export async function initialize(OBR, Command) {
     OBR.broadcast.onMessage(command, ({ connectionId, data }) => {
       if (!sceneReady || !data || !board || data.board !== board.key) return;
       const local = connectionId === connection;
+      if (data.type === "recover-lobby") {
+        if (!local || state?.host === connection || data.host !== state?.host ||
+            !["preparing", "playing", "finished"].includes(state?.phase) || pending.length >= 48) return;
+        pending.push(async () => {
+          if (!sceneReady || data.host !== state?.host || state.host === connection) return;
+          controlMode = modeOf(state);
+          aspects = { ...state.aspects };
+          claims = {}; active = {}; selections = {};
+          match = null; preparation = null;
+          // Publish the new authority before restoring shared items. The previous
+          // host drops its in-memory simulation on this metadata change.
+          await publish(true);
+          await returnToLobby();
+        });
+        return;
+      }
       // Only this GM's own connection may acquire an idle lobby. A player or
       // another GM's broadcast cannot acquire it through this handler.
       if (data.type === "take-host") {
@@ -293,7 +323,7 @@ export async function initialize(OBR, Command) {
           aspects = { ...state.aspects };
           controlMode = modeOf(state);
           active = { ...state.active }; selections = plainCopy(state.selections ?? {});
-          await publish();
+          await publish(true);
         });
         return;
       }
@@ -304,14 +334,14 @@ export async function initialize(OBR, Command) {
             ids.some(id => typeof id !== "string" || match?.pawns[id]?.claim?.connection !== connectionId)) return [];
         return ids;
       };
-      const living = () => !match || match.winner ? [] : commandIds().map(id => match.pawns[id]).filter(pawn => !pawn.deadUntil);
+      const living = () => !match || preparation || match.winner ? [] : commandIds().map(id => match.pawns[id]).filter(pawn => !pawn.deadUntil);
       const formation = (index, count) => {
         if (count < 2) return { x: 0, y: 0 };
         const cols = Math.ceil(Math.sqrt(count)), rows = Math.ceil(count / cols), gap = 18 * board.scale;
         return { x: (index % cols - (cols - 1) / 2) * gap, y: (Math.floor(index / cols) - (rows - 1) / 2) * gap };
       };
       if (data.type === "combat-click") {
-        if (!match || match.winner) return;
+        if (!match || preparation || match.winner) return;
         if (data.id !== undefined && match.pawns[data.id]?.claim?.connection !== connectionId) return;
         const combat = combatViews(match).find(fight => fight.id === data.combat);
         if (!combat || combat.round !== data.round) return;
@@ -385,6 +415,15 @@ export async function initialize(OBR, Command) {
           const ids = controlMode === "individual" ? [data.id] : ownedIds(controls(), connectionId);
           for (const id of ids) delete claims[id];
           await publish();
+        } else if (data.type === "ready-early" && preparation && ownedIds(controls(), connectionId).length) {
+          if (preparation.ready.has(connectionId)) return;
+          preparation.ready.add(connectionId);
+          const required = new Set(Object.values(claims).map(claim => claim.connection));
+          if ([...required].every(owner => preparation.ready.has(owner))) {
+            preparation = null;
+            lastTick = clock();
+          }
+          await publish();
         } else if (data.type === "start" && local && !match) {
           const claimCount = Object.keys(claims).length;
           const practice = data.practice === true;
@@ -396,6 +435,7 @@ export async function initialize(OBR, Command) {
           const calibrated = Number.isFinite(data.routeSeconds) && data.routeSeconds >= 2 && data.routeSeconds <= 90;
           match = newMatch(board, claims, calibrated ? data.routeSeconds : DEFAULT_ROUTE_SECONDS, calibrated);
           match.practice = practice;
+          preparation = practice ? null : { remaining: 60, ready: new Set() };
           lastTick = clock();
           publishedItems.clear();
           await syncItems(true);
@@ -423,13 +463,20 @@ export async function initialize(OBR, Command) {
       try {
         const manage = pending.shift();
         if (manage) await manage();
-        if (!sceneReady || !match || match.winner) return;
+        if (!sceneReady || !match || state?.host !== connection || match.winner) return;
         const now = clock();
         // Treat a suspended GM tab as a pause, so no pawn jumps.
         const elapsed = Math.min(now - lastTick, 0.25);
         lastTick = now;
+        if (preparation) {
+          preparation.remaining = Math.max(0, preparation.remaining - elapsed);
+          if (preparation.remaining <= 1e-8) preparation = null;
+          if (!preparation || now - lastPublish >= 1) await publish();
+          return;
+        }
         tick(match, elapsed);
         await syncItems();
+        if (!match || state?.host !== connection) return;
         if (match.winner || now - lastPublish >= 1 ||
             (match.combatRevision !== lastCombatRevision && now - lastPublish >= 0.4)) await publish();
       } catch (error) {
