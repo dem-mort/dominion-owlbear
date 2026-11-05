@@ -1,14 +1,14 @@
 {
   "name": "Доминион · Осколок Силы",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "manifest_version": 1,
   "description": "Пробный матч 6×6 в Owlbear Rodeo",
   "icon": "/dominion-owlbear/run.svg",
-  "background_url": "/dominion-owlbear/background.html?v=0.8.0",
+  "background_url": "/dominion-owlbear/background.html?v=0.8.1",
   "action": {
     "title": "Доминион",
     "icon": "/dominion-owlbear/run.svg",
-    "popover": "/dominion-owlbear/index.html?v=0.8.0",
+    "popover": "/dominion-owlbear/index.html?v=0.8.1",
     "height": 640,
     "width": 340
   }

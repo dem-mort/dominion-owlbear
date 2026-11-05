@@ -1,9 +1,9 @@
-import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.8.0";
-import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.8.0";
-import { modeOf } from "./control.mjs?v=0.8.0";
-import { captureStatus } from "./rules.mjs?v=0.8.0";
+import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.8.1";
+import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.8.1";
+import { modeOf } from "./control.mjs?v=0.8.1";
+import { captureStatus } from "./rules.mjs?v=0.8.1";
 const PANEL_KEY = "ru.allods.dominion/help-view";
-const guideUrl = new URL("./guide.svg?v=0.8.0", import.meta.url).href;
+const guideUrl = new URL("./guide.svg?v=0.8.1", import.meta.url).href;
 const blankUrl = new URL("./blank.svg", import.meta.url).href;
 const COLORS = { text: "#e8f0f5", muted: "#a8bac8", red: "#ffb0aa", blue: "#9adeff", amber: "#ffd296", green: "#a7e2c4" };
 // Owlbear validates every TextStyle field, including text hidden on an image.

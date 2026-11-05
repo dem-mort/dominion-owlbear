@@ -1,11 +1,11 @@
-import { ownedIds } from "./control.mjs?v=0.8.0";
-import { NS } from "./rules.mjs?v=0.8.0";
+import { ownedIds } from "./control.mjs?v=0.8.1";
+import { NS } from "./rules.mjs?v=0.8.1";
 
 export const TARGET_KEY = NS + "/map-target";
 const VIEW_KEY = NS + "/local-view";
 const HOME_KEY = NS + "/lobby-position";
-const targetUrl = new URL("./target.svg?v=0.8.0", import.meta.url).href;
-const readyUrl = new URL("./target-ready.svg?v=0.8.0", import.meta.url).href;
+const targetUrl = new URL("./target.svg?v=0.8.1", import.meta.url).href;
+const readyUrl = new URL("./target-ready.svg?v=0.8.1", import.meta.url).href;
 const finitePosition = position => Number.isFinite(position?.x) && Number.isFinite(position?.y);
 const validId = value => typeof value === "string" && value.length > 0;
 const TEXT_STYLE = {

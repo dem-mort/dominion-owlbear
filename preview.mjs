@@ -1,5 +1,5 @@
-import { createPanel } from "./panel-ui.mjs?v=0.8.0";
-import { modeOf, ownedIds, claimTargetIds, canStart } from "./control.mjs?v=0.8.0";
+import { createPanel } from "./panel-ui.mjs?v=0.8.1";
+import { modeOf, ownedIds, claimTargetIds, canStart } from "./control.mjs?v=0.8.1";
 const classes = ["Воин", "Храмовник", "Разведчик", "Жрец", "Маг", "Бард"];
 const slots = ["К", "С"].flatMap(prefix => classes.map((name, index) => ({ id: prefix + (index + 1), name: prefix + (index + 1) + " · " + name, team: prefix === "К" ? "red" : "blue" })));
 const aspects = Object.fromEntries(slots.map(slot => [slot.id, slot.name.endsWith("Жрец") ? "heal" : slot.name.endsWith("Бард") ? "support" : "attack"]));
@@ -19,7 +19,7 @@ function makeState(scenario) {
   const lobby = ["lobby", "selected", "player", "teams-lobby", "teams-ready", "solo-lobby", "solo-ready"].includes(scenario);
   const empty = ["lobby", "teams-lobby", "solo-lobby"].includes(scenario);
   const claims = empty ? {} : mode === "individual" ? picked() : ownerClaims(mode);
-  const state = { rules: "0.8.0", board: "preview", host: scenario === "player" ? "other" : "local", slots, aspects: { ...aspects }, controlMode: mode,
+  const state = { rules: "0.8.1", board: "preview", host: scenario === "player" ? "other" : "local", slots, aspects: { ...aspects }, controlMode: mode,
     active: empty ? {} : { local: mine }, selections: empty ? {} : { local: [mine] }, claims, phase: lobby ? "lobby" : scenario === "finished" ? "finished" : "playing" };
   if (!lobby) addMatch(state);
   if (scenario.includes("preparing")) {

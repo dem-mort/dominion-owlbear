@@ -1,7 +1,8 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.8.0";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.8.0";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.8.0";
-import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.8.0";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.8.1";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.8.1";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.8.1";
+import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.8.1";
+import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.8.1";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -39,6 +40,8 @@ export async function initialize(OBR, Command) {
   const pending = [];
   let lastTick = 0;
   let lastPublish = -Infinity;
+  let lastMetadataPublish = -Infinity;
+  let broadcastReady = false;
   let lastItemSync = -Infinity;
   let lastCombatRevision = -1;
   let combatDirty = false;
@@ -120,21 +123,21 @@ export async function initialize(OBR, Command) {
     });
   }
 
-  OBR.room.onMetadataChange(metadata => {
-    const next = metadata[stateKey];
+  function applySnapshot(next, persisted = false) {
     // A write sent by the previous host can arrive after its replacement.
     // Never resurrect an older authority, even when its own SDK write was
     // already in flight before the takeover notification reached it.
     if (state && next?.board === state.board && epochOf(next) < epochOf(state)) {
-      if (host && state.host === connection && !repairQueued) {
+      if (persisted && host && state.host === connection && !repairQueued) {
         repairQueued = true;
         pending.push(async () => {
           repairQueued = false;
-          if (sceneReady && state?.host === connection) await publish();
+          if (sceneReady && state?.host === connection) await publish(false, true);
         });
       }
       return;
     }
+    if (isOlderSnapshot(next, state)) return;
     state = next;
     if (match && state?.host !== connection) {
       match = null;
@@ -143,10 +146,12 @@ export async function initialize(OBR, Command) {
       repairQueued = false;
     }
     updateLocal();
-  });
+  }
+  OBR.room.onMetadataChange(metadata => applySnapshot(metadata[stateKey], true));
   state = (await OBR.room.getMetadata())[stateKey];
+  const snapshotGate = await createSnapshotGate(OBR, connection, role, () => state);
 
-  async function publish(acquire = false) {
+  async function publish(acquire = false, forceMetadata = false) {
     if (!sceneReady) return;
     if (!acquire && board && state?.board === board.key && state.host !== connection) return;
     if (!board) {
@@ -154,15 +159,18 @@ export async function initialize(OBR, Command) {
       return;
     }
     lastPublish = clock();
+    const previousPhase = state?.phase;
     normalizeSelection();
     const snapshot = {
-      rules: "0.8.0",
+      rules: "0.8.1",
       board: board.key, host: connection,
       epoch: (state?.board === board.key ? epochOf(state) : 0) + (acquire ? 1 : 0),
+      revision: !acquire && state?.board === board.key && Number.isSafeInteger(state.revision) ? state.revision + 1 : 1,
       boardScale: board.scale,
       actionSeconds: match?.stepSeconds ?? (controlMode === "individual" && Object.keys(claims).length === 12 && new Set(Object.values(claims).map(claim => claim.connection)).size === 12 ? 1 : 3),
       slots: board.slots.map(({ id, name, team }) => ({ id, name, team })),
-      claims: { ...claims }, aspects: { ...aspects }, controlMode, active: { ...active }, selections: plainCopy(selections),
+      claims: { ...claims }, aspects: { ...aspects }, controlMode,
+      active: controlMode === "individual" ? {} : { ...active }, selections: controlMode === "individual" ? {} : plainCopy(selections),
       phase: !match ? "lobby" : preparation ? "preparing" : match.winner ? "finished" : "playing",
     };
     if (preparation) snapshot.preparation = {
@@ -189,7 +197,19 @@ export async function initialize(OBR, Command) {
     }
     state = snapshot;
     updateLocal();
-    await OBR.room.setMetadata({ [stateKey]: snapshot });
+    // Ephemeral snapshots reach every connection, including multiple tabs of
+    // the same account. Metadata remains the reconnect/persistence channel.
+    if (broadcastReady) {
+      try {
+        await OBR.broadcast.sendMessage(command, { type: "snapshot", snapshot }, { destination: "ALL" });
+      } catch (error) {
+        console.error("Dominion snapshot broadcast", error?.message ?? String(error));
+      }
+    }
+    if (forceMetadata || acquire || snapshot.phase === "lobby" || previousPhase !== snapshot.phase || clock() - lastMetadataPublish >= 1) {
+      lastMetadataPublish = clock();
+      await OBR.room.setMetadata({ [stateKey]: snapshot });
+    }
     if (!match) await syncLobbyLabels();
   }
 
@@ -351,6 +371,10 @@ export async function initialize(OBR, Command) {
   });
 
   OBR.broadcast.onMessage(command, ({ connectionId, data }) => {
+      if (data?.type === "snapshot") {
+        void snapshotGate.accept(connectionId, data.snapshot).then(accepted => { if (accepted) applySnapshot(data.snapshot); }).catch(fail);
+        return;
+      }
       if (connectionId === connection && data?.type === "focus-combat") { void focusBattleTool().catch(fail); return; }
       if (!host) return;
       if (!sceneReady || !data || !board || data.board !== board.key) return;
@@ -455,7 +479,7 @@ export async function initialize(OBR, Command) {
           if (!Array.isArray(ids) || !ids.length || ids.length > 12 || new Set(ids).size !== ids.length ||
               ids.some(id => claims[id]?.connection !== connectionId) || !ids.includes(data.id)) return;
           active[connectionId] = data.id; selections[connectionId] = [...ids];
-          await publish();
+          await publish(false, true);
         } else if (data.type === "claim" && !match) {
           if (data.controlMode !== undefined && data.controlMode !== controlMode) return;
           const name = typeof data.name === "string" ? data.name.trim().slice(0, 24) : "";
@@ -485,7 +509,7 @@ export async function initialize(OBR, Command) {
             preparation = null;
             lastTick = clock();
           }
-          await publish();
+          await publish(false, true);
         } else if (data.type === "start" && local && !match) {
           const claimCount = Object.keys(claims).length;
           const practice = data.practice === true;
@@ -513,7 +537,7 @@ export async function initialize(OBR, Command) {
           match.pawns[slot.id].bot = true;
           match.pawns[slot.id].destination = { ...match.points[1].position };
           match.practiceOpponent = true;
-          await publish();
+          await publish(false, true);
         } else if (data.type === "lobby" && local && match) {
           await returnToLobby();
         }
@@ -521,6 +545,7 @@ export async function initialize(OBR, Command) {
       if (pending.length < 48) pending.push(manage);
     });
 
+  broadcastReady = true;
   if (host) {
     setInterval(async () => {
       if (busy || !sceneReady || !board) return;
