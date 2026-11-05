@@ -1,5 +1,5 @@
 import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, COMBAT_STEPS } from "./rules.mjs?v=0.4.0";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.6.0";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.6.1";
 
 const ASPECT_LABEL = { attack: "Нападение", support: "Поддержка", heal: "Исцеление" };
 const ACTION_LABEL = { attack: "Атаковать", support: "Поддержать", heal: "Лечить" };
@@ -293,7 +293,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
   }
 
   function render() {
-    const compatible = state?.rules === "0.6.0";
+    const compatible = state?.rules === "0.6.1";
     element("loading").hidden = compatible;
     element("lobby").hidden = !compatible || state.phase !== "lobby";
     element("playing").hidden = !compatible || state.phase === "lobby";

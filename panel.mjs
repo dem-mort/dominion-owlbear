@@ -1,6 +1,6 @@
 import OBR from "https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm";
 import { NS } from "./rules.mjs?v=0.4.0";
-import { createPanel, scenePortraits } from "./panel-ui.mjs?v=0.6.0";
+import { createPanel, scenePortraits } from "./panel-ui.mjs?v=0.6.1";
 
 if (new URLSearchParams(location.search).has("obrref")) {
   OBR.onReady(async () => {

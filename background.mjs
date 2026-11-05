@@ -1,6 +1,6 @@
 import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.4.0";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.6.0";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.6.0";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.6.1";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.6.1";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -38,6 +38,7 @@ export async function initialize(OBR, Command) {
   let publishedItems = new Map();
   let sceneItems = [];
   let sceneReady = false;
+  let sceneLoadVersion = 0;
   let lastWarning = -Infinity;
   let announcedCombats = new Set();
   const vision = createLocalVision(OBR, connection, role, fail, Command);
@@ -45,7 +46,7 @@ export async function initialize(OBR, Command) {
   function updateLocal() {
     vision.update(state, sceneItems, sceneReady);
     const mine = new Set(ownedIds(state, connection));
-    const fights = state?.phase === "playing" ? (state.combats ?? []).filter(fight => fight.members.some(id => mine.has(id))) : [];
+    const fights = sceneReady && state?.phase === "playing" ? (state.combats ?? []).filter(fight => fight.members.some(id => mine.has(id))) : [];
     if (fights.some(fight => !announcedCombats.has(fight.id))) void OBR.action.open().catch(fail);
     announcedCombats = new Set(fights.map(fight => fight.id));
   }
@@ -72,7 +73,7 @@ export async function initialize(OBR, Command) {
     return controlMode === "individual" ? name || code : code + (name ? " · " + name : "");
   }
   async function syncLobbyLabels() {
-    if (!board || match) return;
+    if (!sceneReady || !board || match) return;
     const labels = new Map(board.slots.map(slot => [slot.id, lobbyLabel(slot)]));
     const changed = sceneItems.filter(item => labels.has(item.id) && item.text?.type === "PLAIN" && item.text.plainText !== labels.get(item.id));
     if (!changed.length) return;
@@ -88,14 +89,15 @@ export async function initialize(OBR, Command) {
   state = (await OBR.room.getMetadata())[stateKey];
 
   async function publish() {
+    if (!sceneReady) return;
     if (!board) {
-      await OBR.room.setMetadata({ [stateKey]: undefined });
+      if (state?.host === connection) await OBR.room.setMetadata({ [stateKey]: undefined });
       return;
     }
     lastPublish = clock();
     normalizeSelection();
     const snapshot = {
-      rules: "0.6.0",
+      rules: "0.6.1",
       board: board.key, host: connection,
       slots: board.slots.map(({ id, name, team }) => ({ id, name, team })),
       claims: { ...claims }, aspects: { ...aspects }, controlMode, active: { ...active }, selections: plainCopy(selections),
@@ -124,6 +126,7 @@ export async function initialize(OBR, Command) {
   }
 
   async function syncItems(force = false) {
+    if (!sceneReady || !match) return;
     // Keep the 100 ms simulation independent of Owlbear's SDK request budget.
     if (!force && clock() - lastItemSync < 0.4 - 1e-8) return;
     const desired = new Map();
@@ -170,9 +173,23 @@ export async function initialize(OBR, Command) {
   }
 
   async function loadBoard(ready) {
+    const loadVersion = ++sceneLoadVersion;
+    sceneReady = false;
+    lastTick = clock();
+    if (!ready) {
+      // A newly joined GM often receives false before the existing scene loads.
+      // Keep the authoritative snapshot and any in-memory match intact.
+      sceneItems = [];
+      pending.length = 0;
+      updateLocal();
+      return;
+    }
     const previous = board;
-    const items = ready ? await OBR.scene.items.getItems() : [];
-    sceneReady = ready;
+    updateLocal();
+    const items = await OBR.scene.items.getItems();
+    if (loadVersion !== sceneLoadVersion) return;
+    sceneReady = true;
+    lastTick = clock();
     sceneItems = items;
     updateLocal();
     const loaded = readBoard(items.map(originalItem));
@@ -195,6 +212,7 @@ export async function initialize(OBR, Command) {
         }
       });
     }
+    if (!sceneReady || loadVersion !== sceneLoadVersion) return;
     // Another GM can acquire the lobby while score migration awaits the SDK.
     if (board && state?.board === board.key && state.host !== connection) {
       restoreControls(state);
@@ -256,20 +274,21 @@ export async function initialize(OBR, Command) {
   OBR.scene.onReadyChange(ready => { void loadBoard(ready).catch(fail); });
   await loadBoard(await OBR.scene.isReady());
   OBR.scene.items.onChange(items => {
+    if (!sceneReady) return;
     sceneItems = items;
     updateLocal();
   });
 
   if (host) {
     OBR.broadcast.onMessage(command, ({ connectionId, data }) => {
-      if (!data || !board || data.board !== board.key) return;
+      if (!sceneReady || !data || !board || data.board !== board.key) return;
       const local = connectionId === connection;
       // Only this GM's own connection may acquire an idle lobby. A player or
       // another GM's broadcast cannot acquire it through this handler.
       if (data.type === "take-host") {
         if (!local || match || state?.phase !== "lobby" || pending.length >= 48) return;
         pending.push(async () => {
-          if (match || state?.phase !== "lobby") return;
+          if (!sceneReady || match || state?.phase !== "lobby") return;
           claims = plainCopy(state.claims);
           aspects = { ...state.aspects };
           controlMode = modeOf(state);
@@ -334,7 +353,7 @@ export async function initialize(OBR, Command) {
         return;
       }
       const manage = async () => {
-        if (!board || data.board !== board.key || state?.host !== connection || data.host !== connection) return;
+        if (!sceneReady || !board || data.board !== board.key || state?.host !== connection || data.host !== connection) return;
         if (data.type === "set-control-mode" && local && !match && Object.hasOwn(CONTROL_MODES, data.mode)) {
           if (controlMode === data.mode) return;
           controlMode = data.mode; claims = {}; active = {}; selections = {};
@@ -399,12 +418,12 @@ export async function initialize(OBR, Command) {
     });
 
     setInterval(async () => {
-      if (busy || !board) return;
+      if (busy || !sceneReady || !board) return;
       busy = true;
       try {
         const manage = pending.shift();
         if (manage) await manage();
-        if (!match || match.winner) return;
+        if (!sceneReady || !match || match.winner) return;
         const now = clock();
         // Treat a suspended GM tab as a pause, so no pawn jumps.
         const elapsed = Math.min(now - lastTick, 0.25);
@@ -425,7 +444,7 @@ export async function initialize(OBR, Command) {
   let lastMove = 0;
 
   function ownPawn() {
-    if (state?.phase !== "playing") return null;
+    if (!sceneReady || state?.phase !== "playing") return null;
     const id = activeId(state, connection), ids = selectedIds(state, connection);
     return id ? { id, ids, board: state.board, host: state.host } : null;
   }
@@ -436,7 +455,7 @@ export async function initialize(OBR, Command) {
 
   async function sendTarget(event, force) {
     const active = drag;
-    if (!active || (!force && clock() - lastMove < 0.4)) return;
+    if (!sceneReady || !active || (!force && clock() - lastMove < 0.4)) return;
     lastMove = clock();
     // ToolEvent.pointerPosition is already in scene coordinates.
     await moveTo(active, event.pointerPosition);
