@@ -1,5 +1,5 @@
 const PANEL_KEY = "ru.allods.dominion/help-view";
-const guideUrl = new URL("./guide.svg?v=0.4.1", import.meta.url).href;
+const guideUrl = new URL("./guide.svg?v=0.4.2", import.meta.url).href;
 const blankUrl = new URL("./blank.svg", import.meta.url).href;
 const COLORS = { text: "#e8f0f5", muted: "#a8bac8", red: "#ffb0aa", blue: "#9adeff", amber: "#ffd296", green: "#a7e2c4" };
 
@@ -69,7 +69,7 @@ export function boardPanelViews(state, items) {
     image: { ...map.image, url: guideUrl, mime: "image/svg+xml" },
     metadata: { [PANEL_KEY]: "background" },
     text: { type: "PLAIN", plainText: "", richText: [{ type: "paragraph", children: [{ text: "" }] }],
-      width: map.image.width, height: map.image.height, style: { padding: 0, fontSize: 12, fillOpacity: 0, strokeWidth: 0 } },
+      width: map.image.width, height: map.image.height, style: { padding: 0, fontSize: 12, fillColor: COLORS.text, fillOpacity: 0, strokeWidth: 0 } },
   };
   delete background.attachedTo;
   const result = [{ source: PANEL_KEY, item: background }];
