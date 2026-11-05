@@ -31,9 +31,17 @@ async function send(command) {
   if (command.type === "lobby") current = makeState("lobby");
   panel.update(structuredClone(current));
 }
+const pristinePanel = document.querySelector("main").cloneNode(true);
 panel = createPanel({ connection: "local", name: "Игрок", host: true, send });
 const scenario = document.getElementById("preview-state");
-scenario.addEventListener("change", () => { current = makeState(scenario.value); panel.update(structuredClone(current)); });
+scenario.addEventListener("change", () => {
+  const previous = document.querySelector("main"), next = pristinePanel.cloneNode(true);
+  next.style.width = previous.style.width;
+  previous.replaceWith(next);
+  current = makeState(scenario.value);
+  panel = createPanel({ connection: "local", name: "Игрок", host: scenario.value !== "player", send });
+  panel.update(structuredClone(current));
+});
 document.getElementById("preview-round").addEventListener("click", () => {
   if (!current.combats?.length) return;
   current.elapsed += 3; current.combats[0].round++; current.combats[0].endsAt += 3; current.combats[0].ready = [];
