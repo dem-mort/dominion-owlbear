@@ -248,7 +248,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
   async function run(data) {
     if (!state || waiting) return;
     waiting = true; render();
-    try { await send({ ...data, board: state.board }); notice(""); }
+    try { await send({ ...data, board: state.board, host: state.host }); notice(""); }
     catch (error) { console.error(error); notice("Команда не отправилась. Попробуй ещё раз."); }
     finally { waiting = false; render(); }
   }
@@ -268,7 +268,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
     const mine = own(), combat = state?.combats?.find(fight => fight.members.includes(mine));
     if (!combat || combatPrompt(combat, state.pawns[mine], mine, state.elapsed, Boolean(combatPressed)).disabled || waiting) return;
     combatPressed = { key: combat.id + "/" + combat.round }; render();
-    try { await send({ type: "combat-click", board: state.board, id: mine, combat: combat.id, round: combat.round }); notice(""); }
+    try { await send({ type: "combat-click", board: state.board, host: state.host, id: mine, combat: combat.id, round: combat.round }); notice(""); }
     catch (error) { combatPressed = null; notice("Действие не отправилось. Нажми ещё раз."); console.error(error); }
     render();
   });

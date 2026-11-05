@@ -144,6 +144,13 @@ export async function initialize(OBR, Command) {
     const loaded = readBoard(items.map(originalItem));
     board = loaded;
     if (!host || (previous && previous.key === loaded?.key)) return;
+    // Opening another GM browser must not reset the existing lobby or match.
+    // It can explicitly acquire the idle lobby with take-host instead.
+    if (board && state?.board === board.key && state.host !== connection) {
+      claims = plainCopy(state.claims ?? {});
+      aspects = { ...state.aspects };
+      return;
+    }
     if (board) {
       await OBR.scene.items.updateItems(board.scores, items => {
         for (const item of items) {
@@ -225,7 +232,7 @@ export async function initialize(OBR, Command) {
         });
         return;
       }
-      if (state?.host !== connection) return;
+      if (state?.host !== connection || data.host !== connection) return;
       if (data.type === "combat-click") {
         if (match?.pawns[data.id]?.claim?.connection !== connectionId) return;
         combatClick(match, data.id, data.combat, data.round);
@@ -334,7 +341,7 @@ export async function initialize(OBR, Command) {
   function ownPawn() {
     if (state?.phase !== "playing") return null;
     const id = Object.keys(state.claims).find(slot => state.claims[slot].connection === connection);
-    return id ? { id, board: state.board } : null;
+    return id ? { id, board: state.board, host: state.host } : null;
   }
 
   function moveTo(pawn, position) {
