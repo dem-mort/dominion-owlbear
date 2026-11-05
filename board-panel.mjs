@@ -1,5 +1,6 @@
 import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.5.1";
 import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.5.1";
+import { modeOf } from "./control.mjs?v=0.6.0";
 const PANEL_KEY = "ru.allods.dominion/help-view";
 const guideUrl = new URL("./guide.svg?v=0.5.1", import.meta.url).href;
 const blankUrl = new URL("./blank.svg", import.meta.url).href;
@@ -26,8 +27,10 @@ function pointStatus(state, name) {
 export function panelFields(state) {
   const playing = state.phase === "playing";
   const finished = state.phase === "finished";
+  const mode = modeOf(state), people = new Set(Object.values(state.claims ?? {}).map(claim => claim.connection)).size;
+  const lobby = mode === "teams" ? "Команды · " + people + "/2" : mode === "solo" ? "Тест · " + people + "/1" : "Лобби · " + Object.keys(state.claims ?? {}).length + "/12";
   const status = finished ? state.winner === "draw" ? "Матч завершён · ничья" : "Победа " + (state.winner === "red" ? "красных" : "синих")
-    : playing ? state.practice ? "Тренировка" : "Матч идёт" : "Лобби · " + Object.keys(state.claims ?? {}).length + "/12";
+    : playing ? state.practice ? "Тренировка" : mode === "solo" ? "Один за 12" : mode === "teams" ? "Игрок против игрока" : "Матч идёт" : lobby;
   const steps = playing ? [
     ["Выбери точку назначения", "Кнопка точки запускает бег."],
     ["Удерживай круг", "10 с без врагов. Чужую сначала сбей."],

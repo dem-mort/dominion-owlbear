@@ -1,4 +1,5 @@
 import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, COMBAT_STEPS } from "./rules.mjs?v=0.4.0";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.6.0";
 
 const ASPECT_LABEL = { attack: "Нападение", support: "Поддержка", heal: "Исцеление" };
 const ACTION_LABEL = { attack: "Атаковать", support: "Поддержать", heal: "Лечить" };
@@ -7,7 +8,7 @@ export const timer = seconds => {
   return Math.floor(remaining / 60) + ":" + String(remaining % 60).padStart(2, "0");
 };
 export function panelContext(state, connection, host) {
-  const mine = Object.keys(state.claims ?? {}).find(id => state.claims[id].connection === connection);
+  const mine = activeId(state, connection);
   const slot = state.slots.find(slot => slot.id === mine);
   return { mine, slot, count: Object.keys(state.claims ?? {}).length, hostControls: host && state.host === connection };
 }
@@ -32,6 +33,26 @@ export function displayedCombat(state, pawn, mine) {
   if (state.phase !== "playing" || !pawn || pawn.deadUntil) return undefined;
   return state.combats?.find(fight => fight.members.includes(mine));
 }
+export function controllerCombats(state, connection) {
+  if (state?.phase !== "playing") return [];
+  const mine = new Set(ownedIds(state, connection).filter(id => state.pawns?.[id] && !state.pawns[id].deadUntil));
+  return (state.combats ?? []).filter(fight => fight.members.some(id => mine.has(id)));
+}
+export function controllerCombatPrompt(state, combat, connection, pressed) {
+  const ids = combat.members.filter(id => state.claims[id]?.connection === connection && state.pawns[id] && !state.pawns[id].deadUntil);
+  if (!ids.length) return null;
+  const readyCount = ids.filter(id => combat.ready.includes(id)).length;
+  const ready = readyCount === ids.length;
+  const prompt = combatPrompt({ ...combat, ready: ready ? [ids[0]] : [] }, state.pawns[ids[0]], ids[0], state.elapsed, pressed);
+  const results = combat.previous?.results.filter(result => ids.includes(result.id)) ?? [];
+  const missed = results.filter(result => !result.active).length;
+  if (ids.length > 1) {
+    if (prompt.state === "action") prompt.button = "Действовать за " + ids.length;
+    if (prompt.state === "ready") prompt.button = "Действия приняты ✓";
+    if (missed && !ready && !pressed) { prompt.hint = "Пропуск у " + missed + " · ещё один — поражение"; prompt.tone = "danger"; }
+  }
+  return { ...prompt, ids, readyCount, missed, results };
+}
 
 export function createPanel({ root = document, connection, name, host, send }) {
   const element = id => root.getElementById(id);
@@ -44,9 +65,17 @@ export function createPanel({ root = document, connection, name, host, send }) {
   };
   const text = (id, value) => { const node = element(id); if (node.textContent !== String(value)) node.textContent = value; };
   const notice = value => { text("notice", value); element("notice").hidden = !value; };
-  let state, waiting = false, portraits = {}, selectedTeam = "red", lastMine, lastLobby = "", combatPressed = null, lastCombat = null;
-  let requestedPoint = null, wasMoving = false;
+  let state, waiting = false, portraits = {}, selectedTeam = "red", lastMine, lastLobby = "", lastCombat = null, focusedCombatId = null;
+  const combatPressed = new Set();
+  let requestedPoint = null, wasMoving = false, lastSelectionKey = "";
   const own = () => state && panelContext(state, connection, host).mine;
+  const myFights = () => controllerCombats(state, connection);
+  const focusedFight = () => {
+    const fights = myFights();
+    const fight = fights.find(fight => fight.id === focusedCombatId) ?? fights.find(fight => fight.members.includes(own())) ?? fights[0];
+    focusedCombatId = fight?.id ?? null;
+    return fight;
+  };
 
   function selectTeam(team, focus = false) {
     selectedTeam = team;
@@ -56,6 +85,17 @@ export function createPanel({ root = document, connection, name, host, send }) {
       element("tab-" + side).tabIndex = side === team ? 0 : -1;
     }
     if (focus) element("tab-" + team).focus();
+    if (state?.phase === "lobby") renderGroupClaim();
+  }
+
+  function renderGroupClaim() {
+    const mode = modeOf(state), targets = claimTargetIds(state, { team: selectedTeam });
+    element("claim-group").hidden = mode === "individual";
+    if (mode === "individual") return;
+    const allMine = targets.every(id => state.claims[id]?.connection === connection);
+    const blocked = targets.some(id => state.claims[id] && state.claims[id].connection !== connection);
+    text("claim-group", blocked ? mode === "solo" ? "Все персонажи уже заняты" : "Команда уже занята" : allMine ? mode === "solo" ? "Все 12 твои ✓" : "Команда твоя ✓" : mode === "solo" ? "Взять всех 12 персонажей" : "Взять " + (selectedTeam === "red" ? "красных" : "синих") + " · 6 персонажей");
+    element("claim-group").disabled = waiting || blocked || allMine;
   }
   for (const team of ["red", "blue"]) {
     element("tab-" + team).addEventListener("click", () => selectTeam(team));
@@ -80,13 +120,14 @@ export function createPanel({ root = document, connection, name, host, send }) {
   function renderLobby(context) {
     const { mine, slot: ownSlot, hostControls, count } = context;
     if (mine !== lastMine) { if (ownSlot) selectTeam(ownSlot.team); lastMine = mine; }
-    const lobbyKey = JSON.stringify([state.board, state.slots, state.claims, state.aspects, portraits, mine, hostControls]);
+    const mode = modeOf(state), multi = mode !== "individual";
+    const lobbyKey = JSON.stringify([state.board, state.slots, state.claims, state.aspects, portraits, mine, hostControls, mode]);
     if (lobbyKey !== lastLobby) {
       lastLobby = lobbyKey;
       for (const team of ["red", "blue"]) {
         const slots = state.slots.filter(slot => slot.team === team);
         element(team + "-slots").replaceChildren(...slots.map(slot => {
-          const claim = state.claims[slot.id], picked = slot.id === mine;
+          const claim = state.claims[slot.id], picked = slot.id === mine, owned = claim?.connection === connection;
           const button = make("button", "slot");
           button.type = "button";
           button.dataset.id = slot.id;
@@ -99,11 +140,14 @@ export function createPanel({ root = document, connection, name, host, send }) {
             portrait.replaceChildren(image);
           }
           button.append(make("span", "slot-code", code), portrait, make("span", "slot-class", className),
-            make("span", "slot-status", picked ? "Выбрано ✓" : claim ? claim.name || "Занят" : "Свободен"));
+            make("span", "slot-status", picked ? "Выбрано ✓" : owned ? "Твой · " + ASPECTS[state.aspects?.[slot.id] ?? defaultAspect(slot)].short : claim ? claim.name || "Занят" : "Свободен"));
           button.setAttribute("aria-pressed", String(picked));
-          button.setAttribute("aria-label", slot.name + (picked ? " · твой персонаж" : claim ? " · занят: " + (claim.name || "игрок") : " · свободен"));
+          button.setAttribute("aria-label", slot.name + (owned ? " · твой персонаж" : claim ? " · занят: " + (claim.name || "игрок") : " · свободен"));
           button.title = slot.name + " · " + ASPECTS[state.aspects?.[slot.id] ?? defaultAspect(slot)].name;
-          button.addEventListener("click", () => { if (slot.id !== own()) void run({ type: "claim", id: slot.id, name }); });
+          button.addEventListener("click", () => {
+            if (slot.id === own()) return;
+            void run(owned ? { type: "select-pawns", id: slot.id, ids: [slot.id] } : { type: "claim", id: slot.id, team: slot.team, name });
+          });
           return button;
         }));
         text(team + "-count", slots.filter(slot => state.claims[slot.id]).length + "/6");
@@ -136,29 +180,85 @@ export function createPanel({ root = document, connection, name, host, send }) {
         }));
       }
     }
-    for (const button of root.querySelectorAll(".slot")) button.disabled = waiting || Boolean(state.claims[button.dataset.id] && button.dataset.id !== mine);
+    for (const button of root.querySelectorAll(".slot")) button.disabled = waiting || Boolean(state.claims[button.dataset.id] && state.claims[button.dataset.id].connection !== connection);
     for (const button of root.querySelectorAll("#aspect-options button")) button.disabled = waiting || button.dataset.aspect === (state.aspects?.[mine] ?? (ownSlot && defaultAspect(ownSlot)));
     for (const select of root.querySelectorAll("#aspect-lineup select")) {
       const slot = state.slots.find(slot => "aspect-" + slot.id === select.id);
       select.disabled = waiting || aspectOptions(slot).length === 1;
     }
     text("count", count);
+    text("lobby-title", multi ? mode === "teams" ? "Выбери команду" : "Тест за всех 12" : "Выбери персонажа");
+    element("control-mode").value = mode;
+    element("control-mode").disabled = !hostControls || waiting;
+    text("mode-help", hostControls ? "Карта 6×6 · смена режима освобождает фишки" : "Карта 6×6 · режим выбирает ведущий");
+    renderGroupClaim();
+    text("release", mode === "teams" ? "Освободить команду" : mode === "solo" ? "Освободить всех 12" : "Освободить фишку");
     element("release").disabled = waiting;
     element("start-form").hidden = !host;
-    element("start").disabled = !hostControls || waiting || count === 0;
+    element("start").disabled = !hostControls || waiting || !canStart(state);
     element("take-host").hidden = !host || hostControls;
     element("take-host").disabled = waiting;
-    element("practice").hidden = !host;
+    element("practice").hidden = !host || multi;
     element("practice").disabled = !hostControls || waiting || count !== 0;
     element("practice").title = count ? "Тренировка доступна, когда все фишки свободны" : "Начать одному за воина К1";
     element("waiting-host").hidden = host;
-    text("start-help", host && !hostControls ? "Управление сейчас в другой вкладке ведущего" : hostControls ? count ? count + "/12 игроков готовы · до 1000 очков" : "Для старта нужен хотя бы один персонаж" : ownSlot ? "Ты готов · после старта появишься на респе" : "Выбери персонажа своей команды");
+    const people = new Set(Object.values(state.claims).map(claim => claim.connection)).size;
+    const preparation = multi ? canStart(state) ? people + "/" + CONTROL_MODES[mode].controllers + " игроков · 12 персонажей готовы" : mode === "teams" ? "Нужны 2 игрока: по одному на команду" : "Возьми всех 12 персонажей для теста" : count ? count + "/12 игроков готовы · до 1000 очков" : "Для старта нужен хотя бы один персонаж";
+    text("start-help", host && !hostControls ? "Управление сейчас в другой вкладке ведущего" : hostControls ? preparation : ownSlot ? "Ты готов · после старта появишься на респе" : multi ? "Выбери команду своей кнопкой" : "Выбери персонажа своей команды");
   }
 
-  function renderCombat(combat, pawn, mine) {
+  function renderMultiControls(context) {
+    const ids = ownedIds(state, connection), chosen = selectedIds(state, connection), mode = modeOf(state);
+    element("multi-controls").hidden = mode === "individual" || !ids.length;
+    if (mode === "individual" || !ids.length) return;
+    text("owned-count", ids.length + " своих");
+    const picker = element("active-pawn"), scope = element("move-scope"), signature = ids.join("/");
+    if (picker.dataset.signature !== signature) {
+      picker.dataset.signature = signature;
+      picker.replaceChildren(...ids.map(id => { const option = make("option"); option.value = id; return option; }));
+    }
+    if (root.activeElement !== picker) for (const option of picker.options) {
+      const slot = state.slots.find(slot => slot.id === option.value), pawn = state.pawns[slot.id];
+      option.textContent = slot.name + (pawn?.deadUntil ? " · респ " + Math.max(0, Math.ceil(pawn.deadUntil - state.elapsed)) + " с" : " · " + (pawn?.hp ?? 100) + " HP");
+    }
+    picker.value = context.mine;
+    picker.disabled = waiting || state.phase === "finished";
+    const groups = [{ value: "single", text: "Только выбранный", ids: [context.mine] }];
+    if (mode === "solo") for (const team of ["red", "blue"]) groups.push({ value: team, text: "Все " + (team === "red" ? "красные" : "синие") + " · 6", ids: ids.filter(id => state.slots.find(slot => slot.id === id).team === team) });
+    groups.push({ value: "all", text: mode === "solo" ? "Все 12 персонажей" : "Вся команда · 6", ids });
+    const current = groups.find(group => group.ids.length === chosen.length && group.ids.every(id => chosen.includes(id)))?.value ?? "custom";
+    const scopeKey = JSON.stringify(groups.map(group => [group.value, group.text]));
+    if (scope.dataset.signature !== scopeKey) {
+      scope.dataset.signature = scopeKey;
+      scope.replaceChildren(...groups.map(group => { const option = make("option", "", group.text); option.value = group.value; return option; }));
+    }
+    if (current === "custom" && !scope.querySelector('option[value="custom"]')) { const option = make("option", "", "Группа · " + chosen.length); option.value = "custom"; option.disabled = true; scope.append(option); }
+    scope.value = current; scope.disabled = waiting || state.phase === "finished";
+    const alive = chosen.filter(id => state.pawns[id] && !state.pawns[id].deadUntil).length;
+    text("selection-summary", "Приказ для " + chosen.length + " · в строю " + alive + ". «Бег» на карте управляет тем же выбором.");
+  }
+
+  function renderFightTabs(fights, focused) {
+    element("fight-tabs").hidden = fights.length < 2;
+    if (fights.length < 2) return;
+    const signature = JSON.stringify([focused?.id, fights.map(fight => [fight.id, fight.round, fight.members, fight.ready])]);
+    if (element("fight-tabs").dataset.signature === signature) return;
+    element("fight-tabs").dataset.signature = signature;
+    element("fight-tabs").replaceChildren(...fights.map(fight => {
+      const own = fight.members.filter(id => state.claims[id]?.connection === connection), ready = own.filter(id => fight.ready.includes(id)).length;
+      const button = make("button", "", fight.name + " · " + ready + "/" + own.length + " готовы");
+      button.type = "button"; button.dataset.needsAction = String(ready < own.length);
+      button.setAttribute("aria-pressed", String(fight.id === focused?.id));
+      button.addEventListener("click", () => { focusedCombatId = fight.id; render(); });
+      return button;
+    }));
+  }
+
+  function renderCombat(combat) {
     const roundKey = combat.id + "/" + combat.round;
-    if (combatPressed?.key !== roundKey) combatPressed = null;
-    const prompt = combatPrompt(combat, pawn, mine, state.elapsed, Boolean(combatPressed));
+    const prompt = controllerCombatPrompt(state, combat, connection, combatPressed.has(roundKey));
+    if (!prompt) return;
+    const members = prompt.ids, pawn = state.pawns[members[0]], mine = members[0];
     text("combat-title", (combat.kind === "pet" ? "Баф: " : "Бой: ") + combat.name);
     text("combat-seconds", Math.ceil(prompt.remaining));
     text("combat-clock", prompt.state === "ready" ? "Следующий сигнал" : "Время на действие");
@@ -178,16 +278,22 @@ export function createPanel({ root = document, connection, name, host, send }) {
     text("combat-pick", prompt.hint); element("combat-pick").dataset.tone = prompt.tone;
     text("combat-action", prompt.button); element("combat-action").dataset.state = prompt.state;
     element("combat-action").disabled = prompt.disabled || waiting;
-    element("retreat").disabled = Boolean(pawn.retreating) || waiting;
+    element("combat-scope").hidden = modeOf(state) === "individual";
+    const bothSides = new Set(members.map(id => state.slots.find(slot => slot.id === id).team)).size > 1;
+    text("combat-scope", (bothSides ? "Обе стороны · " : "Твои персонажи · ") + members.length + ". Клик действует только в этой стычке.");
+    element("retreat").disabled = members.every(id => state.pawns[id].retreating) || waiting;
+    element("retreat").firstChild.textContent = members.length > 1 ? "Отвести своих · " + members.length + " " : "Отступить ";
+    element("retreat").querySelector("span").textContent = bothSides ? "к своим респам →" : "к своему респу →";
     const result = prompt.previous;
-    text("combat-result", result ? !result.active ? "Ещё один пропуск подряд — поражение" : "Урон " + result.damage + (result.healing ? " · лечение " + result.healing : "") + (result.boost ? " · ДД +" + result.boost + "%" : "")
-      : "Случайность и состав команд решают исход");
-    text("combat-score", combat.empowered.includes(mine) || pawn.pet ? "Питомец усиливает твой аспект на 20% в этой стычке." : "Без бафа питомца. Состав команд показан в блоке боя.");
-    if (lastCombat !== combat.id) { lastCombat = combat.id; element("play-scroll").scrollTop = 0; }
+    const sum = key => prompt.results.reduce((value, item) => value + (Number(item[key]) || 0), 0);
+    text("combat-result", members.length > 1 && prompt.results.length ? "Урон " + sum("damage") + (sum("healing") ? " · лечение " + sum("healing") : "") + (prompt.missed ? " · пропуски " + prompt.missed : "") : result ? !result.active ? "Ещё один пропуск подряд — поражение" : "Урон " + result.damage + (result.healing ? " · лечение " + result.healing : "") + (result.boost ? " · ДД +" + result.boost + "%" : "") : "Случайность и состав команд решают исход");
+    const buffs = members.filter(id => combat.empowered.includes(id) || state.pawns[id].pet).length;
+    text("combat-score", buffs ? "Баф +20% у " + buffs + " из " + members.length + " твоих персонажей в этой стычке." : "Без бафа питомца. Состав команд показан в блоке боя.");
+    if (lastCombat !== combat.id) { lastCombat = combat.id; element("combat").scrollIntoView({ block: "start" }); }
   }
 
   function render() {
-    const compatible = state?.rules === "0.4.0";
+    const compatible = state?.rules === "0.6.0";
     element("loading").hidden = compatible;
     element("lobby").hidden = !compatible || state.phase !== "lobby";
     element("playing").hidden = !compatible || state.phase === "lobby";
@@ -198,30 +304,36 @@ export function createPanel({ root = document, connection, name, host, send }) {
     const context = panelContext(state, connection, host);
     const { mine, slot, hostControls } = context;
     text("phase", state.phase === "lobby" ? "Лобби" : state.phase === "finished" ? "Итог" : state.practice ? "Тренировка" : "Матч идёт");
-    if (state.phase === "lobby") { requestedPoint = null; wasMoving = false; combatPressed = null; lastCombat = null; renderLobby(context); return; }
+    if (state.phase === "lobby") { requestedPoint = null; wasMoving = false; lastSelectionKey = ""; combatPressed.clear(); lastCombat = null; focusedCombatId = null; renderLobby(context); return; }
     lastLobby = "";
     const finished = state.phase === "finished", pawn = state.pawns[mine];
     const dead = Boolean(pawn?.deadUntil);
-    const combat = displayedCombat(state, pawn, mine);
-    const canMove = !finished && Boolean(pawn) && !dead;
+    const fights = myFights(), combat = focusedFight(), chosen = selectedIds(state, connection);
+    const selectionKey = JSON.stringify([mine, chosen]);
+    if (selectionKey !== lastSelectionKey) { requestedPoint = null; wasMoving = false; lastSelectionKey = selectionKey; }
+    const mobile = chosen.filter(id => state.pawns[id] && !state.pawns[id].deadUntil);
+    const canMove = !finished && mobile.length > 0;
+    for (const key of combatPressed) if (!fights.some(fight => key === fight.id + "/" + fight.round)) combatPressed.delete(key);
+    renderMultiControls(context); renderFightTabs(fights, combat);
     const role = ASPECTS[pawn?.aspect ?? "attack"];
     text("timer", timer(TOTAL - state.elapsed)); text("red-score", state.score.red); text("blue-score", state.score.blue);
     element("winner-card").hidden = !finished;
     text("winner", state.winner === "draw" ? "Ничья" : "Победа: " + (TEAM_NAME[state.winner] ?? ""));
     element("restart").hidden = !finished || !hostControls; element("restart").disabled = waiting;
-    element("player-card").dataset.dead = String(dead);
+    element("player-card").dataset.dead = String(dead && !mobile.length && !combat);
     text("me", slot ? slot.name : "Режим зрителя");
     text("player-state", pawn ? dead ? pawn.deathReason === "inactive" ? "Поражение без действий" : "Персонаж погиб" : role.short + " · " + role.help : "Присоединиться можно в следующем матче");
-    text("control", finished ? "" : !pawn ? "Наблюдай за точками и счётом" : dead ? "Возрождение через " + Math.max(0, Math.ceil(pawn.deadUntil - state.elapsed)) + " с"
-      : pawn.retreating ? "Отступаю к своему респу" : combat ? "Твоё действие — в блоке боя ниже" : pawn.moving ? requestedPoint ? "Бегу: " + requestedPoint : "Персонаж в пути" : "Выбери точку — персонаж побежит сам");
+    text("control", finished ? "" : !pawn ? "Наблюдай за точками и счётом" : combat ? "Стычка: " + combat.name + " · действие ниже" : chosen.length > 1 ? "Приказ для " + mobile.length + " живых из " + chosen.length : dead ? "Возрождение через " + Math.max(0, Math.ceil(pawn.deadUntil - state.elapsed)) + " с"
+      : pawn.retreating ? "Отступаю к своему респу" : pawn.moving ? requestedPoint ? "Бегу: " + requestedPoint : "Персонаж в пути" : "Выбери точку — персонаж побежит сам");
     if (wasMoving && !pawn?.moving) requestedPoint = null;
     wasMoving = Boolean(pawn?.moving);
     element("health-row").hidden = !pawn; element("health").value = pawn?.hp ?? 0; text("health-label", (pawn?.hp ?? 0) + "/100");
     element("pet-charge").hidden = !pawn?.pet && !combat?.empowered?.includes(mine);
     element("combat").hidden = !combat;
-    if (combat) renderCombat(combat, pawn, mine); else { combatPressed = null; lastCombat = null; text("combat-score", ""); }
-    text("points-heading", canMove ? combat ? "Сменить точку / выйти из боя" : "Куда бежать?" : "Контроль точек");
-    text("move-label", canMove ? combat ? "" : "Нажми точку" : dead ? "После респа" : "Обзор");
+    if (combat) renderCombat(combat); else { lastCombat = null; text("combat-score", ""); }
+    const selectedInFight = combat && chosen.some(id => combat.members.includes(id));
+    text("points-heading", canMove ? selectedInFight ? "Сменить точку / выйти из боя" : "Куда бежать?" : "Контроль точек");
+    text("move-label", canMove ? chosen.length > 1 ? "За " + mobile.length + " персонажей" : selectedInFight ? "" : "Нажми точку" : dead ? "После респа" : "Обзор");
     element("free-move").hidden = !canMove;
     for (const button of pointButtons) {
       const point = state.points.find(point => point.name === button.dataset.point);
@@ -248,31 +360,48 @@ export function createPanel({ root = document, connection, name, host, send }) {
   async function run(data) {
     if (!state || waiting) return;
     waiting = true; render();
-    try { await send({ ...data, board: state.board, host: state.host }); notice(""); }
+    try { await send({ ...data, board: state.board, host: state.host, controlMode: modeOf(state) }); notice(""); }
     catch (error) { console.error(error); notice("Команда не отправилась. Попробуй ещё раз."); }
     finally { waiting = false; render(); }
   }
   element("start-form").addEventListener("submit", event => {
     event.preventDefault();
-    if (!panelContext(state, connection, host).count) return;
+    if (!canStart(state)) return;
     const value = element("route").value;
     if (!element("route").reportValidity()) return;
     void run({ type: "start", routeSeconds: value ? Number(value) : null });
   });
   element("practice").addEventListener("click", () => void run({ type: "start", practice: true }));
+  element("control-mode").addEventListener("change", () => void run({ type: "set-control-mode", mode: element("control-mode").value }));
+  element("claim-group").addEventListener("click", () => void run({ type: "claim", team: selectedTeam, name }));
+  element("active-pawn").addEventListener("change", () => {
+    const id = element("active-pawn").value;
+    void run({ type: "select-pawns", id, ids: [id] });
+  });
+  element("move-scope").addEventListener("change", () => {
+    const scope = element("move-scope").value, all = ownedIds(state, connection);
+    const ids = scope === "single" ? [own()] : scope === "all" ? all : all.filter(id => state.slots.find(slot => slot.id === id).team === scope);
+    if (ids.length) void run({ type: "select-pawns", ids, id: ids.includes(own()) ? own() : ids[0] });
+  });
   element("take-host").addEventListener("click", () => void run({ type: "take-host" }));
   element("release").addEventListener("click", () => void run({ type: "release", id: own() }));
   element("practice-opponent").addEventListener("click", () => void run({ type: "practice-opponent" }));
-  for (const button of pointButtons) button.addEventListener("click", () => { requestedPoint = button.dataset.point; void run({ type: "move-to-point", id: own(), point: button.dataset.point }); });
+  for (const button of pointButtons) button.addEventListener("click", () => { requestedPoint = button.dataset.point; void run({ type: "move-to-point", id: own(), ids: selectedIds(state, connection), point: button.dataset.point }); });
   element("combat-action").addEventListener("click", async () => {
-    const mine = own(), combat = state?.combats?.find(fight => fight.members.includes(mine));
-    if (!combat || combatPrompt(combat, state.pawns[mine], mine, state.elapsed, Boolean(combatPressed)).disabled || waiting) return;
-    combatPressed = { key: combat.id + "/" + combat.round }; render();
-    try { await send({ type: "combat-click", board: state.board, host: state.host, id: mine, combat: combat.id, round: combat.round }); notice(""); }
-    catch (error) { combatPressed = null; notice("Действие не отправилось. Нажми ещё раз."); console.error(error); }
+    const combat = focusedFight();
+    if (!combat || waiting) return;
+    const roundKey = combat.id + "/" + combat.round;
+    const prompt = controllerCombatPrompt(state, combat, connection, combatPressed.has(roundKey));
+    if (!prompt || prompt.disabled) return;
+    combatPressed.add(roundKey); render();
+    try { await send({ type: "combat-click", board: state.board, host: state.host, id: prompt.ids[0], combat: combat.id, round: combat.round }); notice(""); }
+    catch (error) { combatPressed.delete(roundKey); notice("Действие не отправилось. Нажми ещё раз."); console.error(error); }
     render();
   });
-  element("retreat").addEventListener("click", () => void run({ type: "retreat", id: own() }));
+  element("retreat").addEventListener("click", () => {
+    const combat = focusedFight(), ids = combat?.members.filter(id => state.claims[id]?.connection === connection) ?? selectedIds(state, connection);
+    if (ids.length) void run({ type: "retreat", id: ids[0], ids });
+  });
   element("restart").addEventListener("click", () => void run({ type: "lobby" }));
   element("stop-match").addEventListener("click", () => { element("stop").open = false; void run({ type: "lobby" }); });
   return {

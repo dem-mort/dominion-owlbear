@@ -1,4 +1,4 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.5.1";
+import { boardPanelViews } from "./board-panel.mjs?v=0.6.0";
 import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.4.0";
 
 export const HOME_KEY = NS + "/lobby-position";
@@ -15,9 +15,14 @@ export function originalItem(item) {
 export function visiblePawns(state, items, connection, role) {
   if (!state || !["playing", "finished"].includes(state.phase)) return [];
   const sources = new Map(items.map(item => [item.id, item]));
-  const viewer = state.slots.find(slot => state.claims[slot.id]?.connection === connection);
-  const eye = viewer && sources.get(viewer.id);
-  const eyeStatus = eye?.metadata?.[PAWN_KEY];
+  const owned = state.slots.filter(slot => state.claims[slot.id]?.connection === connection);
+  const viewer = owned[0];
+  const soloController = state.controlMode === "solo" && Boolean(viewer);
+  // A team controller sees through every living pawn they own. Selecting a
+  // different pawn changes controls, not the team's already shared sight.
+  const eyes = (state.controlMode === "teams" ? owned : viewer ? [viewer] : [])
+    .map(slot => sources.get(slot.id))
+    .filter(source => source?.metadata?.[PAWN_KEY] && !source.metadata[PAWN_KEY].deadUntil);
   const referee = role === "GM" && !viewer;
   const radius = state.sightRadius;
   return state.slots.flatMap(slot => {
@@ -26,9 +31,9 @@ export function visiblePawns(state, items, connection, role) {
     const status = source?.metadata?.[PAWN_KEY];
     if (!claim || !source || !status) return [];
     const ally = slot.team === viewer?.team;
-    const nearby = eyeStatus && !eyeStatus.deadUntil && !status.deadUntil &&
-      Number.isFinite(radius) && radius > 0 && distance(eye.position, source.position) <= radius;
-    if (!referee && !ally && !nearby) return [];
+    const nearby = !status.deadUntil && Number.isFinite(radius) && radius > 0 &&
+      eyes.some(eye => distance(eye.position, source.position) <= radius);
+    if (!referee && !soloController && !ally && !nearby) return [];
     const original = originalItem(source);
     const text = structuredClone(original.text);
     let nickname = slot.name.slice(0, 2);

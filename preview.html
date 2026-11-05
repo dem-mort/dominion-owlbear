@@ -3,10 +3,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Доминион</title>
-<link rel="stylesheet" href="./panel.css?v=0.5.4">
+<link rel="stylesheet" href="./panel.css?v=0.6.0">
 
 <style>body{padding:18px 0;display:flex;flex-direction:column;align-items:center;gap:14px;background:#08131a}.app{width:340px;height:640px;outline:1px solid #456377;border-radius:12px}.preview-controls{width:min(340px,95vw);display:grid;gap:7px;font:12px system-ui;color:#a8bac8}.preview-controls select{padding:8px}.preview-controls button{padding:7px}.preview-note{margin:0;font-size:10px}@media(max-width:339px){.app{width:320px}}</style>
-<div class="preview-controls"><strong>Предпросмотр панели · 340 × 640</strong><label for="preview-state">Сценарий</label><select id="preview-state"><option value="lobby">Лобби ведущего</option><option value="selected">Выбран Жрец</option><option value="player">Обычный игрок</option><option value="moving">Движение</option><option value="combat">Бой · действие</option><option value="ready">Бой · принято</option><option value="missed">Бой · пропуск</option><option value="dead">Возрождение</option><option value="spectator">Зритель</option><option value="finished">Итог</option></select><button id="preview-round">Следующий сигнал боя</button><button id="preview-size">Ширина: 340 → 320</button><p class="preview-note">Демонстрационные данные. Комната Owlbear не затрагивается.</p></div><main class="app">
+<div class="preview-controls"><strong>Предпросмотр панели · 340 × 640</strong><label for="preview-state">Сценарий</label><select id="preview-state"><option value="lobby">Лобби ведущего</option><option value="selected">Выбран Жрец</option><option value="player">Обычный игрок</option><option value="moving">Движение</option><option value="combat">Бой · действие</option><option value="ready">Бой · принято</option><option value="missed">Бой · пропуск</option><option value="dead">Возрождение</option><option value="spectator">Зритель</option><option value="teams-lobby">2 игрока · пустое лобби</option><option value="teams-ready">2 игрока · команды готовы</option><option value="teams-playing">2 игрока · управление</option><option value="teams-combats">2 игрока · две стычки</option><option value="solo-lobby">1 игрок · пустое лобби</option><option value="solo-ready">1 игрок · все 12 готовы</option><option value="solo-playing">1 игрок · управление</option><option value="solo-combats">1 игрок · две стычки</option><option value="finished">Итог</option></select><button id="preview-round">Следующий сигнал боя</button><button id="preview-size">Ширина: 340 → 320</button><p class="preview-note">Демонстрационные данные. Комната Owlbear не затрагивается.</p></div><main class="app">
   <header class="app-header">
     <div><div class="eyebrow">ДОМИНИОН / 6×6</div><h1>Осколок Силы</h1></div>
     <span id="phase" class="badge">Подключение</span>
@@ -14,11 +14,13 @@
   <section id="loading" class="empty-state" role="status"><span class="loading-dot"></span><h2>Открываю сцену…</h2><p id="loading-help">Подключаемся к комнате Owlbear.</p></section>
   <section id="lobby" class="screen" hidden aria-label="Подготовка матча">
     <div class="screen-body">
-      <div class="section-heading"><h2><span class="step">1</span> Выбери персонажа</h2><span class="muted"><b id="count">0</b>/12</span></div>
+      <div class="mode-picker"><label for="control-mode">Формат управления</label><select id="control-mode"><option value="individual">12 игроков · по 1 персонажу</option><option value="teams">2 игрока · по 6 персонажей</option><option value="solo">1 игрок · все 12 персонажей</option></select><p id="mode-help" class="fine"></p></div>
+      <div class="section-heading"><h2><span class="step">1</span> <span id="lobby-title">Выбери персонажа</span></h2><span class="muted"><b id="count">0</b>/12</span></div>
       <div class="team-tabs" role="tablist" aria-label="Команда">
         <button id="tab-red" type="button" role="tab" aria-controls="red-team" aria-selected="true" class="red">Красные <span id="red-count">0/6</span></button>
         <button id="tab-blue" type="button" role="tab" aria-controls="blue-team" aria-selected="false" class="blue" tabindex="-1">Синие <span id="blue-count">0/6</span></button>
       </div>
+      <button id="claim-group" type="button" class="secondary claim-group" hidden>Взять команду</button>
       <div id="red-team" role="tabpanel" aria-labelledby="tab-red"><div id="red-slots" class="slots"></div></div>
       <div id="blue-team" role="tabpanel" aria-labelledby="tab-blue" hidden><div id="blue-slots" class="slots"></div></div>
       <section id="selection" class="selection-card" aria-labelledby="selection-heading">
@@ -51,17 +53,20 @@
     </div>
     <div id="play-scroll" class="screen-body play-body">
       <section id="winner-card" class="winner-card" hidden><h2 id="winner" role="status"></h2><p class="fine">Матч завершён</p><button id="restart" type="button" class="primary" hidden>Вернуться в лобби</button></section>
+      <section id="multi-controls" class="multi-controls" hidden><div class="section-heading"><h2>Твои персонажи</h2><span id="owned-count" class="fine"></span></div><div class="multi-fields"><div><label for="active-pawn">Персонаж</label><select id="active-pawn"></select></div><div><label for="move-scope">Приказ движения</label><select id="move-scope"></select></div></div><p id="selection-summary" class="fine"></p></section>
       <section id="player-card" class="player-card" aria-label="Твой персонаж">
         <div class="player-heading"><div><h2 id="me"></h2><p id="player-state" class="fine"></p></div><span id="pet-charge" class="badge amber" hidden>Баф +20%</span></div>
         <div id="health-row" class="health-row" hidden><meter id="health" min="0" max="100" value="100" aria-label="Здоровье"></meter><span id="health-label">100/100</span></div>
         <p id="control" class="next-action" role="status"></p>
       </section>
+      <div id="fight-tabs" class="fight-tabs" role="group" aria-label="Твои стычки" hidden></div>
       <section id="combat" class="combat" hidden aria-labelledby="combat-title">
         <div class="combat-heading"><div><span class="eyebrow">СТЫЧКА</span><h2 id="combat-title">Бой</h2></div><div class="combat-countdown"><b id="combat-seconds">3</b><span>сек</span></div></div>
         <div class="round-line"><span id="combat-clock"></span><span id="combat-round"></span></div>
         <progress id="combat-progress" max="3" value="3" aria-label="Время на действие"></progress>
         <div id="combat-lineup" class="combat-lineup" aria-label="Состав команд"></div>
         <p id="combat-pick" class="combat-pick" role="status"></p>
+        <p id="combat-scope" class="fine" hidden></p>
         <button type="button" id="combat-action" class="combat-action">Атаковать</button>
         <p class="combat-rule">Один клик на отсчёт · скорость клика не важна</p>
         <p id="combat-result" class="combat-result"></p>
@@ -85,5 +90,5 @@
   </section>
   <p id="notice" role="status" class="notice" hidden></p>
 </main>
-<script type="module" src="./preview.mjs?v=0.5.4-r2"></script>
+<script type="module" src="./preview.mjs?v=0.6.0-r2"></script>
 </html>
