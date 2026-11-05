@@ -1,7 +1,13 @@
 const PANEL_KEY = "ru.allods.dominion/help-view";
-const guideUrl = new URL("./guide.svg?v=0.4.2", import.meta.url).href;
+const guideUrl = new URL("./guide.svg?v=0.4.3", import.meta.url).href;
 const blankUrl = new URL("./blank.svg", import.meta.url).href;
 const COLORS = { text: "#e8f0f5", muted: "#a8bac8", red: "#ffb0aa", blue: "#9adeff", amber: "#ffd296", green: "#a7e2c4" };
+// Owlbear validates every TextStyle field, including text hidden on an image.
+const TEXT_STYLE = {
+  fillColor: COLORS.text, fillOpacity: 1, strokeColor: "#000000", strokeOpacity: 0, strokeWidth: 0,
+  textAlign: "LEFT", textAlignVertical: "MIDDLE", fontFamily: "Roboto", fontSize: 12,
+  fontWeight: 400, lineHeight: 1.1, padding: 0,
+};
 
 function clock(seconds) {
   const value = Math.max(0, Math.ceil(Number(seconds) || 0));
@@ -69,7 +75,7 @@ export function boardPanelViews(state, items) {
     image: { ...map.image, url: guideUrl, mime: "image/svg+xml" },
     metadata: { [PANEL_KEY]: "background" },
     text: { type: "PLAIN", plainText: "", richText: [{ type: "paragraph", children: [{ text: "" }] }],
-      width: map.image.width, height: map.image.height, style: { padding: 0, fontSize: 12, fillColor: COLORS.text, fillOpacity: 0, strokeWidth: 0 } },
+      width: map.image.width, height: map.image.height, style: { ...TEXT_STYLE, fillOpacity: 0 } },
   };
   delete background.attachedTo;
   const result = [{ source: PANEL_KEY, item: background }];
@@ -88,7 +94,7 @@ export function boardPanelViews(state, items) {
       metadata: { [PANEL_KEY]: field.id },
       text: { type: "PLAIN", plainText: field.text, richText: [{ type: "paragraph", children: [{ text: field.text }] }],
         width: field.width, height: field.height,
-        style: { padding: 0, fontFamily: "Roboto", fontSize: field.size, fontWeight: field.weight ?? 400,
+        style: { ...TEXT_STYLE, fontSize: field.size, fontWeight: field.weight ?? 400,
           textAlign: field.align ?? "LEFT", textAlignVertical: "MIDDLE", lineHeight: 1.1,
           fillColor: field.color ?? COLORS.text, fillOpacity: 1, strokeColor: "#000000", strokeOpacity: 0, strokeWidth: 0 } },
     };

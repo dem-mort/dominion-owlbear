@@ -1,4 +1,4 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.4.2";
+import { boardPanelViews } from "./board-panel.mjs?v=0.4.3";
 import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.4.0";
 
 export const HOME_KEY = NS + "/lobby-position";
