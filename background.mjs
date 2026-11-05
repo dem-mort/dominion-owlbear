@@ -1,5 +1,5 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, chooseCombatAction, combatViews } from "./rules.mjs?v=0.3.0";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, chooseCombatAction, combatViews } from "./rules.mjs?v=0.3.1";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.3.1";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -154,6 +154,7 @@ export async function initialize(OBR) {
   }
 
   async function returnToLobby() {
+    if (match?.practice) claims = {};
     const slots = new Map(board.slots.map(slot => [slot.id, slot]));
     const points = new Set(board.points.map(point => point.id));
     const pets = new Set(board.pets.map(pet => pet.id));
@@ -175,7 +176,6 @@ export async function initialize(OBR) {
         }
       }
     });
-    if (match?.practice) claims = {};
     match = null;
     publishedItems.clear();
     await publish();

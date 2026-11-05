@@ -1,5 +1,5 @@
 import OBR from "https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm";
-import { NS, TOTAL, TEAM_NAME, ACTION_NAMES, COMBAT_ROUNDS } from "./rules.mjs?v=0.3.0";
+import { NS, TOTAL, TEAM_NAME, ACTION_NAMES, COMBAT_ROUNDS } from "./rules.mjs?v=0.3.1";
 
 const element = id => document.getElementById(id);
 const key = NS + "/state";
