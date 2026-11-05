@@ -1,5 +1,5 @@
-import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, COMBAT_STEPS, captureStatus } from "./rules.mjs?v=0.7.0";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.7.0";
+import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, COMBAT_STEPS, captureStatus } from "./rules.mjs?v=0.7.1";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.7.1";
 
 const ASPECT_LABEL = { attack: "Нападение", support: "Поддержка", heal: "Исцеление" };
 const ACTION_LABEL = { attack: "Атаковать", support: "Поддержать", heal: "Лечить" };
@@ -303,7 +303,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
   }
 
   function render() {
-    const compatible = state?.rules === "0.7.0";
+    const compatible = state?.rules === "0.7.1";
     element("loading").hidden = compatible;
     element("lobby").hidden = !compatible || state.phase !== "lobby";
     element("playing").hidden = !compatible || state.phase === "lobby";
@@ -438,7 +438,14 @@ export function createPanel({ root = document, connection, name, host, send }) {
     if (host && !panelContext(state, connection, host).hostControls && ["preparing", "playing", "finished"].includes(state.phase)) void run({ type: "recover-lobby" });
   });
   return {
-    update(next) { const changedBoard = state?.board !== next?.board, enteringPreparation = next?.phase === "preparing" && state?.phase !== "preparing"; state = next; if (changedBoard) { lastLobby = ""; lastMine = null; selectedTeam = "red"; selectTeam("red"); } if (enteringPreparation) element("play-scroll").scrollTop = 0; render(); },
+    update(next) {
+      if (state && next?.board === state.board && (next.epoch ?? 0) < (state.epoch ?? 0)) return;
+      const changedBoard = state?.board !== next?.board, enteringPreparation = next?.phase === "preparing" && state?.phase !== "preparing";
+      state = next;
+      if (changedBoard) { lastLobby = ""; lastMine = null; selectedTeam = "red"; selectTeam("red"); }
+      if (enteringPreparation) element("play-scroll").scrollTop = 0;
+      render();
+    },
     portraits(next) { if (JSON.stringify(portraits) === JSON.stringify(next)) return; portraits = next; if (state?.phase === "lobby") render(); },
     disconnected(message) { text("loading-help", message); },
   };

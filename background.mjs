@@ -1,6 +1,6 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.7.0";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.7.0";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.7.0";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.7.1";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.7.1";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.7.1";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -12,6 +12,7 @@ const homeKey = HOME_KEY;
 const blankImage = new URL("./blank.svg", import.meta.url).href;
 // SDK item updaters use Immer draft proxies, which structuredClone cannot copy.
 const plainCopy = value => value == null ? value : JSON.parse(JSON.stringify(value));
+const epochOf = snapshot => Number.isSafeInteger(snapshot?.epoch) && snapshot.epoch >= 0 ? snapshot.epoch : 0;
 
 function label(item, value) {
   if (item.text?.type !== "PLAIN" || item.text.plainText === value) return;
@@ -42,6 +43,7 @@ export async function initialize(OBR, Command) {
   let sceneLoadVersion = 0;
   let lastWarning = -Infinity;
   let announcedCombats = new Set();
+  let repairQueued = false;
   const vision = createLocalVision(OBR, connection, role, fail, Command);
 
   function updateLocal() {
@@ -84,11 +86,26 @@ export async function initialize(OBR, Command) {
   }
 
   OBR.room.onMetadataChange(metadata => {
-    state = metadata[stateKey];
+    const next = metadata[stateKey];
+    // A write sent by the previous host can arrive after its replacement.
+    // Never resurrect an older authority, even when its own SDK write was
+    // already in flight before the takeover notification reached it.
+    if (state && next?.board === state.board && epochOf(next) < epochOf(state)) {
+      if (host && state.host === connection && !repairQueued) {
+        repairQueued = true;
+        pending.push(async () => {
+          repairQueued = false;
+          if (sceneReady && state?.host === connection) await publish();
+        });
+      }
+      return;
+    }
+    state = next;
     if (match && state?.host !== connection) {
       match = null;
       preparation = null;
       pending.length = 0;
+      repairQueued = false;
     }
     updateLocal();
   });
@@ -104,8 +121,9 @@ export async function initialize(OBR, Command) {
     lastPublish = clock();
     normalizeSelection();
     const snapshot = {
-      rules: "0.7.0",
+      rules: "0.7.1",
       board: board.key, host: connection,
+      epoch: (state?.board === board.key ? epochOf(state) : 0) + (acquire ? 1 : 0),
       slots: board.slots.map(({ id, name, team }) => ({ id, name, team })),
       claims: { ...claims }, aspects: { ...aspects }, controlMode, active: { ...active }, selections: plainCopy(selections),
       phase: !match ? "lobby" : preparation ? "preparing" : match.winner ? "finished" : "playing",
@@ -193,6 +211,7 @@ export async function initialize(OBR, Command) {
       // Keep the authoritative snapshot and any in-memory match intact.
       sceneItems = [];
       pending.length = 0;
+      repairQueued = false;
       updateLocal();
       return;
     }

@@ -1,5 +1,5 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.7.0";
-import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.7.0";
+import { boardPanelViews } from "./board-panel.mjs?v=0.7.1";
+import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.7.1";
 
 export const HOME_KEY = NS + "/lobby-position";
 export const PAWN_KEY = NS + "/pawn";

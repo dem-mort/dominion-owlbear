@@ -1,7 +1,7 @@
 import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.5.1";
 import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.5.1";
-import { modeOf } from "./control.mjs?v=0.7.0";
-import { captureStatus } from "./rules.mjs?v=0.7.0";
+import { modeOf } from "./control.mjs?v=0.7.1";
+import { captureStatus } from "./rules.mjs?v=0.7.1";
 const PANEL_KEY = "ru.allods.dominion/help-view";
 const guideUrl = new URL("./guide.svg?v=0.5.1", import.meta.url).href;
 const blankUrl = new URL("./blank.svg", import.meta.url).href;
