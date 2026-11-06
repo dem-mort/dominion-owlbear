@@ -88,6 +88,7 @@ function makeState(scenario) {
     state.combats[0].previous = { results: [{ id: mine, active: scenario !== "missed", damage: 4, healing: 22, boost: 0 }] };
   }
   if (scenario.endsWith("-combats")) state.combats = [fight("fight-A", "Капля", ["К1", "К2", "С1", "С2"]), fight("fight-B", "Звезда", ["К3", "К4", "С3", "С4"])];
+  if (scenario === "teams-three-combats") { state.combats.push(fight("fight-C", "Трефа", ["К5", "К6", "С5", "С6"])); state.combats[0].ready = ["К1", "К2"]; }
   if (scenario.startsWith("teams-capture-")) {
     const paused = scenario.endsWith("paused"), rollback = scenario.endsWith("rollback");
     const point = state.points.find(point => point.name === "Капля");
@@ -179,6 +180,7 @@ addPreviewOption("teams-respawn-partial", "Респ · часть команды
 addPreviewOption("solo-respawn", "Респ · обе команды");
 addPreviewOption("teams-preparing-pairs", "Подготовка · две пары с хилами");
 addPreviewOption("teams-squads-custom", "Подготовка · свои группы");
+addPreviewOption("teams-three-combats", "Три стычки · одно действие принято");
 scenario.addEventListener("change", () => {
   const previous = document.querySelector("main"), next = pristinePanel.cloneNode(true); next.style.width = previous.style.width; previous.replaceWith(next);
   current = makeState(scenario.value); panel = createPanel({ connection: "local", name: "Игрок", host: scenario.value !== "player", send }); panel.update(structuredClone(current));
