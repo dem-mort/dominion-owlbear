@@ -1,8 +1,9 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.10.0";
-import { targetViews } from "./targets.mjs?v=0.10.0";
-import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.10.0";
-import { CLASSES, classId, classTemplate } from "./classes.mjs?v=0.10.0";
-import { planViews } from "./planning.mjs?v=0.10.0";
+import { boardPanelViews } from "./board-panel.mjs?v=0.11.0";
+import { targetViews } from "./targets.mjs?v=0.11.0";
+import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.11.0";
+import { CLASSES, classId, classTemplate } from "./classes.mjs?v=0.11.0";
+import { planViews } from "./planning.mjs?v=0.11.0";
+import { selectedIds } from "./control.mjs?v=0.11.0";
 
 export const HOME_KEY = NS + "/lobby-position";
 export const PAWN_KEY = NS + "/pawn";
@@ -91,6 +92,20 @@ function signature(item) {
   return JSON.stringify([item.position, item.rotation, item.scale, item.image, item.grid, item.text, item.name, item.commands, item.style, item.metadata]);
 }
 
+export function selectionViews(state, items, connection, Command) {
+  if (!Command || !["preparing", "playing"].includes(state?.phase) || state.recoveryRequired) return [];
+  const { MOVE: M, CUBIC: C, CLOSE: Z } = Command, scale = state.boardScale ?? 1, r = 22 * scale, k = r * .55228475;
+  return selectedIds(state, connection).flatMap(id => {
+    const source = items.find(item => item.id === id);
+    if (!source?.position || ![source.position.x, source.position.y].every(Number.isFinite)) return [];
+    const key = VIEW_KEY + "/selection/" + id;
+    return [{ source: key, item: { id, createdUserId: source.createdUserId ?? "unknown", type: "PATH", name: "Выбран · " + state.slots.find(s => s.id === id).name,
+      layer: "NOTE", zIndex: 9000, visible: true, locked: true, disableHit: true, position: { ...source.position }, rotation: 0, scale: { x: 1, y: 1 },
+      fillRule: "nonzero", commands: [[M, 0, -r], [C, k, -r, r, -k, r, 0], [C, r, k, k, r, 0, r], [C, -k, r, -r, k, -r, 0], [C, -r, -k, -k, -r, 0, -r], [Z]],
+      style: { fillColor: "#000000", fillOpacity: 0, strokeColor: "#b5ffe1", strokeOpacity: 1, strokeWidth: 2.5 * scale, strokeDash: [5 * scale, 3 * scale] }, metadata: { [VIEW_KEY]: key } } }];
+  });
+}
+
 // Local items belong to this browser's view. They never change shared visibility.
 export function createLocalVision(OBR, connection, role, onError, Command) {
   let current = { state: null, items: [], ready: false };
@@ -121,6 +136,7 @@ export function createLocalVision(OBR, connection, role, onError, Command) {
         for (const view of classBadgeViews(snapshot.state, snapshot.items, visible, Command)) desired.set(view.source, view.item);
         for (const view of boardPanelViews(snapshot.state, snapshot.items, Command, connection, role)) desired.set(view.source, view.item);
         for (const view of planViews(snapshot.state, snapshot.items, connection, role, Command)) desired.set(view.source, view.item);
+        for (const view of selectionViews(snapshot.state, snapshot.items, connection, Command)) desired.set(view.source, view.item);
         for (const view of targetViews(snapshot.state, snapshot.items, connection, Command)) desired.set(view.source, view.item);
         const removed = [...views.keys()].filter(id => !desired.has(id));
         if (removed.length) {

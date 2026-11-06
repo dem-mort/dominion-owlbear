@@ -1,11 +1,12 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.10.0";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.10.0";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.10.0";
-import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.10.0";
-import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.10.0";
-import { CLASSES, classId, lineupSlots, classTemplate } from "./classes.mjs?v=0.10.0";
-import { createAuthority } from "./authority.mjs?v=0.10.0";
-import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.10.0";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.11.0";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.11.0";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.0";
+import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.11.0";
+import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.0";
+import { CLASSES, classId, lineupSlots, classTemplate } from "./classes.mjs?v=0.11.0";
+import { createAuthority } from "./authority.mjs?v=0.11.0";
+import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.11.0";
+import { validSquads } from "./squads.mjs?v=0.11.0";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -39,7 +40,7 @@ export async function initialize(OBR, Command) {
   let aspects = {};
   let classes = {};
   let controlMode = "individual";
-  let active = {}, selections = {};
+  let active = {}, selections = {}, squads = {};
   let state = null;
   let busy = false;
   const pending = [];
@@ -79,12 +80,17 @@ export async function initialize(OBR, Command) {
     syncBattleTool(target);
   }
 
-  async function focusBattleTool() {
+  async function focusBattleTool(center = false) {
     if (!battleToolReady || !mapTarget(state, connection) || typeof OBR.tool.activateTool !== "function") return;
     const current = typeof OBR.tool.getActiveTool === "function" ? await OBR.tool.getActiveTool() : null;
     if (!mapTarget(state, connection)) return;
     if (current && current !== battleTool) previousTool = current;
     await OBR.tool.activateTool(battleTool);
+    const target = mapTarget(state, connection);
+    if (center && target && typeof OBR.viewport?.animateToBounds === "function") {
+      const half = 240 * state.boardScale, { x, y } = target.position;
+      await OBR.viewport.animateToBounds({ min: { x: x - half, y: y - half }, max: { x: x + half, y: y + half }, center: { x, y }, width: half * 2, height: half * 2 });
+    }
   }
   function syncBattleTool(target) {
     if (!battleToolReady || targetFight === (target?.combat ?? null)) return;
@@ -122,6 +128,7 @@ export async function initialize(OBR, Command) {
     for (const [id, claim] of Object.entries(claims)) claim.aspect = aspects[id];
     controlMode = modeOf(snapshot);
     active = { ...snapshot.active }; selections = plainCopy(snapshot.selections ?? {});
+    squads = Object.fromEntries(["red", "blue"].filter(team => validSquads(lineup(), team, snapshot.squads?.[team])).map(team => [team, plainCopy(snapshot.squads[team])]));
   }
   function lobbyLabel(slot) {
     const selected = lineup().find(s => s.id === slot.id) ?? slot;
@@ -190,14 +197,14 @@ export async function initialize(OBR, Command) {
     normalizeSelection();
     const snapshot = {
       ...(legacySnapshot ?? {}),
-      rules: "0.10.0",
+      rules: "0.11.0",
       board: board.key, host: connection,
       epoch: (state?.board === board.key ? epochOf(state) : 0) + (acquire ? 1 : 0),
       revision: !acquire && state?.board === board.key && Number.isSafeInteger(state.revision) ? state.revision + 1 : 1,
       boardScale: board.scale,
       actionSeconds: match?.stepSeconds ?? (controlMode === "individual" && Object.keys(claims).length === 12 && new Set(Object.values(claims).map(claim => claim.connection)).size === 12 ? 1 : 3),
       slots: lineup().map(({ id, name, team, classId, baseClassId }) => ({ id, name, team, classId, baseClassId })),
-      classes: { ...classes }, claims: { ...claims }, aspects: { ...aspects }, controlMode,
+      classes: { ...classes }, claims: { ...claims }, aspects: { ...aspects }, controlMode, squads: plainCopy(squads),
       active: controlMode === "individual" ? {} : { ...active }, selections: controlMode === "individual" ? {} : plainCopy(selections),
       phase: legacySnapshot ? legacySnapshot.phase : !match ? "lobby" : preparation ? "preparing" : match.winner ? "finished" : "playing",
       ...(legacySnapshot ? { recoveryRequired: true } : {}),
@@ -359,7 +366,7 @@ export async function initialize(OBR, Command) {
     else {
       controlMode = state?.board === board?.key ? modeOf(state) : "individual";
       claims = {};
-      active = {}; selections = {};
+      active = {}; selections = {}; squads = {};
       classes = Object.fromEntries((board?.slots ?? []).map(slot => [slot.id, classId(slot)]));
       aspects = Object.fromEntries(lineup().map(slot => [slot.id, defaultAspect(slot)]));
     }
@@ -422,7 +429,7 @@ export async function initialize(OBR, Command) {
         void snapshotGate.accept(connectionId, data.snapshot).then(accepted => { if (accepted) applySnapshot(data.snapshot); }).catch(fail);
         return;
       }
-      if (connectionId === connection && data?.type === "focus-combat") { void focusBattleTool().catch(fail); return; }
+      if (connectionId === connection && data?.type === "focus-combat") { void focusBattleTool(true).catch(fail); return; }
       if (!host) return;
       if (!sceneReady || !data || !board || data.board !== board.key) return;
       const local = connectionId === connection;
@@ -523,8 +530,13 @@ export async function initialize(OBR, Command) {
         if (!sceneReady || !board || data.board !== board.key || state?.host !== connection || data.host !== connection) return;
         if (data.type === "set-control-mode" && local && !match && Object.hasOwn(CONTROL_MODES, data.mode)) {
           if (controlMode === data.mode) return;
-          controlMode = data.mode; claims = {}; active = {}; selections = {};
+          controlMode = data.mode; claims = {}; active = {}; selections = {}; squads = {};
           await publish();
+        } else if (data.type === "set-squads") {
+          if (!["red", "blue"].includes(data.team) || !validSquads(lineup(), data.team, data.groups) ||
+              data.groups.flat().some(id => claims[id]?.connection !== connectionId) || match?.winner || legacySnapshot) return;
+          squads[data.team] = plainCopy(data.groups);
+          await publish(false, true);
         } else if (data.type === "select-pawns") {
           const ids = data.ids;
           if (!Array.isArray(ids) || !ids.length || ids.length > 12 || new Set(ids).size !== ids.length ||

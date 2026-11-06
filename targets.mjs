@@ -1,5 +1,5 @@
-import { ownedIds } from "./control.mjs?v=0.10.0";
-import { NS } from "./rules.mjs?v=0.10.0";
+import { ownedIds } from "./control.mjs?v=0.11.0";
+import { NS } from "./rules.mjs?v=0.11.0";
 
 export const TARGET_KEY = NS + "/map-target";
 const VIEW_KEY = NS + "/local-view";
@@ -49,7 +49,7 @@ export function mapTarget(state, connection) {
   if (!fight || fight.stepSeconds !== 1 || !Number.isFinite(fight.endsAt) ||
       (Number.isFinite(state.elapsed) && fight.endsAt <= state.elapsed)) return null;
   const target = targetPosition(fight, id, state.boardScale);
-  return target ? { ...target, ready: Array.isArray(fight.ready) && fight.ready.includes(id) } : null;
+  return target ? { ...target, remaining: Math.max(0, Math.min(1, fight.endsAt - state.elapsed)), ready: Array.isArray(fight.ready) && fight.ready.includes(id) } : null;
 }
 
 // Native paths avoid loading an external SVG into Owlbear's Image renderer.
@@ -84,5 +84,10 @@ export function targetViews(state, items, connection, Command = PATH_COMMAND) {
       strokeColor: target.ready ? "#76ffad" : "#5feaff", strokeOpacity: 1, strokeWidth: 3, strokeDash: [] },
     metadata: { [VIEW_KEY]: source, [TARGET_KEY]: target.key },
   };
-  return [{ source, id: target.id, item }];
+  const steps = Math.max(1, Math.ceil(48 * target.remaining));
+  const arc = Array.from({ length: steps + 1 }, (_, i) => { const a = -Math.PI / 2 + Math.PI * 2 * target.remaining * i / steps; return [i ? L : M, Math.cos(a) * 10.2, Math.sin(a) * 10.2]; });
+  const clockKey = source + "/clock";
+  const clock = { ...item, name: "Цель · время окна", zIndex: 10001, commands: arc,
+    style: { ...item.style, fillOpacity: 0, strokeColor: target.ready ? "#76ffad" : target.remaining <= .3 ? "#ffb0aa" : "#ffd296", strokeWidth: 2.5 }, metadata: { [VIEW_KEY]: clockKey } };
+  return [{ source, id: target.id, item }, ...target.ready ? [] : [{ source: clockKey, id: target.id, item: clock }]];
 }

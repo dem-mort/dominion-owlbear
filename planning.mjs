@@ -1,4 +1,4 @@
-import { visibleTeams } from "./roster.mjs?v=0.10.0";
+import { visibleTeams } from "./roster.mjs?v=0.11.0";
 const VIEW_KEY = "ru.allods.dominion/local-view";
 export function planViews(state, items, connection, role, Command) {
   if (state?.phase !== "preparing" || state.recoveryRequired || !Command) return [];

@@ -1,8 +1,9 @@
-import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.10.0";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.10.0";
-import { isOlderSnapshot } from "./snapshot-sync.mjs?v=0.10.0";
-import { CLASSES, classId } from "./classes.mjs?v=0.10.0";
-import { spawnGroups } from "./roster.mjs?v=0.10.0";
+import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.11.0";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.0";
+import { isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.0";
+import { CLASSES, classId } from "./classes.mjs?v=0.11.0";
+import { spawnGroups } from "./roster.mjs?v=0.11.0";
+import { ownedSquads, memberLabel, swapMember, orderSummary } from "./squads.mjs?v=0.11.0";
 
 const ASPECT_LABEL = { attack: "Нападение", support: "Поддержка", heal: "Исцеление", defense: "Защита" };
 const ACTION_LABEL = { attack: "Атаковать", support: "Поддержать", heal: "Лечить", defense: "Защищаться" };
@@ -23,13 +24,13 @@ export function preparationPrompt(state, connection) {
   const eligible = required.includes(connection) && ownedIds(state, connection).length > 0;
   return { remaining: timer(preparation.remaining), readyCount: ready.size, requiredCount: required.length,
     eligible, ready: eligible && ready.has(connection), disabled: !eligible || ready.has(connection),
-    button: ready.has(connection) && eligible ? "Ты готов ✓" : "Начать раньше" };
+    button: ready.has(connection) && eligible ? "Готов ✓" : "Готов к старту" };
 }
 export function combatPrompt(combat, pawn, mine, elapsed, pressed) {
   const remaining = Math.max(0, combat.endsAt - elapsed);
   const stepSeconds = combat.stepSeconds === 1 ? 1 : 3, roundLimit = combat.roundLimit ?? 5;
   const finish = prompt => stepSeconds === 1
-    ? { ...prompt, stepSeconds, roundLimit, mapTarget: true, disabled: true, button: "Нажми цель на карте", hint: prompt.state === "ready" ? "Действие принято ✓ · жди следующую цель" : "Цель меняется каждую секунду" }
+    ? { ...prompt, stepSeconds, roundLimit, mapTarget: true, disabled: true, button: prompt.state === "ready" ? "Попадание принято ✓" : "Действие — цель на карте", hint: prompt.state === "ready" ? "Жди следующую цель" : "Нажми светящуюся цель у точки" }
     : { ...prompt, stepSeconds, roundLimit, mapTarget: false };
   const ready = combat.ready.includes(mine);
   const previous = combat.previous?.results.find(result => result.id === mine);
@@ -47,7 +48,7 @@ export function petAuraPrompt(pawn, combat, id) {
   const help = empowered ? "Твой урон усилен на 30%. Бафы питомцев не складываются."
     : carrier ? "Ты носитель: +30% к урону ДД своей команды в этой стычке. " + (pawn?.aspect === "heal" ? "Твоё лечение не усиливается." : pawn?.aspect === "support" ? "Твоя поддержка не усиливается." : "Бафы не складываются.")
     : charged ? "Заряд: +30% к урону ДД в одной стычке. Бафы не складываются." : "";
-  return { carrier, empowered, charged, visible: carrier || empowered || charged, label: "+30% к урону ДД", help };
+  return { carrier, empowered, charged, visible: carrier || empowered || charged, label: carrier ? "Носитель бафа" : empowered ? "Урон +30%" : "+30% к урону ДД", help };
 }
 export function scenePortraits(items) {
   return Object.fromEntries(items.filter(item => item.layer === "CHARACTER").flatMap(item => {
@@ -273,6 +274,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
     picker.value = context.mine;
     picker.disabled = waiting || state.phase === "finished";
     const groups = [{ value: "single", text: "Только выбранный", ids: [context.mine] }];
+    for (const side of ownedSquads(state, connection)) for (const [i, pair] of side.groups.entries()) groups.push({ value: side.team + "-pair-" + i, text: (mode === "solo" ? (side.team === "red" ? "К" : "С") + " · " : "") + "Группа " + (i + 1) + " · " + pair.map(id => state.slots.find(s => s.id === id).name.slice(0, 2)).join(" + "), ids: pair });
     if (mode === "solo") for (const team of ["red", "blue"]) groups.push({ value: team, text: "Все " + (team === "red" ? "красные" : "синие") + " · 6", ids: ids.filter(id => state.slots.find(slot => slot.id === id).team === team) });
     groups.push({ value: "all", text: mode === "solo" ? "Все 12 персонажей" : "Вся команда · 6", ids });
     const current = groups.find(group => group.ids.length === chosen.length && group.ids.every(id => chosen.includes(id)))?.value ?? "custom";
@@ -284,14 +286,57 @@ export function createPanel({ root = document, connection, name, host, send }) {
     if (current === "custom" && !scope.querySelector('option[value="custom"]')) { const option = make("option", "", "Группа · " + chosen.length); option.value = "custom"; option.disabled = true; scope.append(option); }
     scope.value = current; scope.disabled = waiting || !["preparing", "playing"].includes(state.phase) || Boolean(state.recoveryRequired);
     const alive = chosen.filter(id => state.pawns[id] && !state.pawns[id].deadUntil).length;
-    text("selection-summary", state.phase === "preparing" ? "Выбери персонажа или группу и назначь маршрут. Пойдут при старте." : "Приказ для " + chosen.length + " · в строю " + alive + ". «Бег» на карте управляет тем же выбором.");
+    text("selection-summary", "Выбрано " + chosen.length + " · в строю " + alive);
+    renderSquads();
+  }
+
+  let lastSquads = "";
+  function renderSquads() {
+    const sides = ownedSquads(state, connection), chosen = selectedIds(state, connection);
+    const signature = JSON.stringify([sides, state.aspects, state.slots, state.phase, waiting, chosen]);
+    if (signature === lastSquads) return;
+    lastSquads = signature;
+    element("squad-editor").hidden = !sides.length;
+    const buttons = [], fields = [];
+    for (const side of sides) {
+      const row = make("div", "squad-team " + side.team);
+      row.setAttribute("aria-label", "Группы: " + TEAM_NAME[side.team]);
+      for (const [i, pair] of side.groups.entries()) {
+        const button = make("button", "squad-pick"); button.type = "button"; button.id = "squad-pick-" + side.team + "-" + i;
+        button.dataset.squad = side.team + "-" + i;
+        button.append(make("b", "", (modeOf(state) === "solo" ? (side.team === "red" ? "К · " : "С · ") : "") + "Группа " + (i + 1)), make("span", "", pair.map(id => memberLabel(state, id)).join(" + ")));
+        button.setAttribute("aria-pressed", String(pair.length === chosen.length && pair.every(id => chosen.includes(id))));
+        button.setAttribute("aria-label", TEAM_NAME[side.team] + " · группа " + (i + 1) + " · " + pair.map(id => memberLabel(state, id)).join(" + "));
+        button.disabled = waiting || state.phase === "finished" || Boolean(state.recoveryRequired);
+        button.addEventListener("click", () => void run({ type: "select-pawns", ids: pair, id: pair.includes(own()) ? own() : pair[0] }));
+        row.append(button);
+      }
+      buttons.push(row);
+      const team = make("div", "squad-settings"); team.append(make("h4", side.team, TEAM_NAME[side.team]));
+      for (const [group, pair] of side.groups.entries()) {
+        const field = make("div", "squad-field"); field.append(make("b", "", "Группа " + (group + 1)));
+        for (const [position, id] of pair.entries()) {
+          const select = make("select"); select.id = "squad-" + side.team + "-" + group + "-" + position;
+          select.setAttribute("aria-label", TEAM_NAME[side.team] + " · группа " + (group + 1) + " · участник " + (position + 1));
+          select.replaceChildren(...side.groups.flat().map(value => { const option = make("option", "", memberLabel(state, value)); option.value = value; return option; }));
+          select.value = id; select.disabled = waiting || state.phase === "finished" || Boolean(state.recoveryRequired);
+          select.addEventListener("change", () => void run({ type: "set-squads", team: side.team, groups: swapMember(side.groups, group, position, select.value) }));
+          field.append(select);
+        }
+        team.append(field);
+      }
+      fields.push(team);
+    }
+    const focusedId = root.activeElement?.id;
+    element("squad-buttons").replaceChildren(...buttons); element("squad-fields").replaceChildren(...fields);
+    if (focusedId?.startsWith("squad-")) root.getElementById(focusedId)?.focus();
   }
 
   let lastSpawn = "";
   function renderSpawn() {
     const groups = spawnGroups(state, connection, host ? "GM" : "PLAYER");
     element("spawn-roster").hidden = !groups.length;
-    const signature = JSON.stringify(groups);
+    const chosen = selectedIds(state, connection), signature = JSON.stringify([groups, chosen, waiting]);
     if (signature === lastSpawn) return;
     lastSpawn = signature;
     element("spawn-members").replaceChildren(...groups.map(group => {
@@ -299,7 +344,12 @@ export function createPanel({ root = document, connection, name, host, send }) {
       box.append(make("h4", group.team, TEAM_NAME[group.team] + " · " + group.members.length));
       if (!group.members.length) box.append(make("p", "fine", "Никого нет"));
       for (const member of group.members) {
-        const row = make("div", "spawn-row"), name = make("div", "spawn-name");
+        const row = make("button", "spawn-row"), name = make("span", "spawn-name");
+        row.type = "button"; row.dataset.pawn = member.id;
+        row.setAttribute("aria-label", "Выбрать " + member.code + " · " + member.name + " · " + member.status);
+        row.setAttribute("aria-pressed", String(chosen.includes(member.id)));
+        row.disabled = waiting || state.claims[member.id]?.connection !== connection;
+        row.addEventListener("click", () => void run({ type: "select-pawns", id: member.id, ids: [member.id] }));
         name.append(make("b", "", member.code + " · " + member.name), make("small", "", member.className + " · " + member.aspect));
         row.append(name, make("span", member.remaining ? "amber" : "success", member.status)); box.append(row);
       }
@@ -310,14 +360,16 @@ export function createPanel({ root = document, connection, name, host, send }) {
   function renderFightTabs(fights, focused) {
     element("fight-tabs").hidden = fights.length < 2;
     if (fights.length < 2) return;
-    const signature = JSON.stringify([focused?.id, fights.map(fight => [fight.id, fight.round, fight.members, fight.ready])]);
+    const signature = JSON.stringify([focused?.id, waiting, fights.map(fight => [fight.id, fight.round, Math.ceil(fight.endsAt - state.elapsed), fight.members, fight.ready])]);
     if (element("fight-tabs").dataset.signature === signature) return;
     element("fight-tabs").dataset.signature = signature;
     element("fight-tabs").replaceChildren(...fights.map(fight => {
       const own = fight.members.filter(id => state.claims[id]?.connection === connection), ready = own.filter(id => fight.ready.includes(id)).length;
-      const button = make("button", "", fight.name + " · " + ready + "/" + own.length + " готовы");
+      const remaining = Math.max(0, Math.ceil(fight.endsAt - state.elapsed));
+      const button = make("button", "", fight.name + " · " + (ready === own.length ? "Принято ✓" : "Клик · " + remaining + " с"));
       button.type = "button"; button.dataset.needsAction = String(ready < own.length);
       button.setAttribute("aria-pressed", String(fight.id === focused?.id));
+      button.disabled = waiting;
       button.addEventListener("click", () => { focusedCombatId = fight.id; render(); });
       return button;
     }));
@@ -349,10 +401,11 @@ export function createPanel({ root = document, connection, name, host, send }) {
     text("combat-pick", prompt.hint); element("combat-pick").dataset.tone = prompt.tone;
     text("combat-action", prompt.button); element("combat-action").dataset.state = prompt.state;
     element("combat-action").dataset.mapTarget = String(prompt.mapTarget);
+    element("combat").dataset.mapTarget = String(prompt.mapTarget);
     element("combat-action").disabled = prompt.disabled || waiting;
     element("focus-combat").hidden = !prompt.mapTarget;
     element("focus-combat").disabled = waiting;
-    text("combat-rule", prompt.mapTarget ? "Цель меняется каждую секунду" : "Один клик на отсчёт · скорость клика не важна");
+    text("combat-rule", prompt.mapTarget ? "Новая цель каждую секунду" : "Одно действие за окно");
     element("combat-scope").hidden = modeOf(state) === "individual";
     const bothSides = new Set(members.map(id => state.slots.find(slot => slot.id === id).team)).size > 1;
     text("combat-scope", (bothSides ? "Обе стороны · " : "Твои персонажи · ") + members.length + ". Клик действует только в этой стычке.");
@@ -366,11 +419,11 @@ export function createPanel({ root = document, connection, name, host, send }) {
     const ownTeams = new Set(members.map(id => state.slots.find(slot => slot.id === id)?.team));
     const carriers = (combat.carriers ?? []).filter(id => ownTeams.has(state.slots.find(slot => slot.id === id)?.team));
     text("combat-score", buffs || carriers.length ? "+30% к урону ДД своей команды в этой стычке. Твоих усиленных ДД: " + buffs + ". Бафы не складываются." : "Без бафа питомца. Состав команд показан в блоке боя.");
-    if (lastCombat !== combat.id) { lastCombat = combat.id; element("combat").scrollIntoView({ block: "start" }); }
+    if (lastCombat !== combat.id) { lastCombat = combat.id; element("play-scroll").scrollTop = 0; }
   }
 
   function render() {
-    const compatible = state?.rules === "0.10.0";
+    const compatible = state?.rules === "0.11.0";
     element("loading").hidden = compatible;
     element("lobby").hidden = !compatible || state.phase !== "lobby";
     element("playing").hidden = !compatible || state.phase === "lobby";
@@ -380,6 +433,8 @@ export function createPanel({ root = document, connection, name, host, send }) {
     }
     const context = panelContext(state, connection, host);
     const { mine, slot, hostControls } = context;
+    element("playing").dataset.phase = state.phase;
+    element("playing").dataset.mode = modeOf(state);
     text("phase", state.recoveryRequired ? "Матч приостановлен" : state.phase === "lobby" ? "Лобби" : state.phase === "preparing" ? "Подготовка" : state.phase === "finished" ? "Итог" : state.practice ? "Тренировка" : "Матч идёт");
     if (state.phase === "lobby") { requestedPoint = null; wasMoving = false; lastSelectionKey = ""; combatPressed.clear(); lastCombat = null; focusedCombatId = null; renderLobby(context); return; }
     lastLobby = "";
@@ -399,9 +454,9 @@ export function createPanel({ root = document, connection, name, host, send }) {
     element("preparation-card").hidden = !preparation;
     if (preparation) {
       text("preparation-timer", preparation.remaining);
-      text("preparation-status", "Матч начнётся через " + preparation.remaining);
-      text("preparation-ready", "Готовы " + preparation.readyCount + "/" + preparation.requiredCount);
-      text("preparation-help", preparation.eligible ? "Если все игроки готовы, матч начнётся раньше." : "Ожидаем готовность игроков. Можно осмотреть карту.");
+      text("preparation-status", "Старт по таймеру или согласию всех");
+      text("preparation-ready", (modeOf(state) === "teams" ? "Капитаны: " : modeOf(state) === "solo" ? "Тестировщик: " : "Игроки: ") + preparation.readyCount + "/" + preparation.requiredCount);
+      text("preparation-help", preparation.eligible ? "Маршруты выполнятся при старте" : "Ожидаем готовность игроков");
       element("ready-early").hidden = !preparation.eligible;
       element("ready-early").disabled = waiting || preparation.disabled;
       text("ready-early", preparation.button);
@@ -414,7 +469,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
     text("player-state", pawn ? dead ? pawn.deathReason === "inactive" ? "Поражение без действий" : "Персонаж погиб" : role.short + " · " + role.help : "Присоединиться можно в следующем матче");
     text("control", finished ? "" : preparing ? "Осмотри карту. Движение и бой начнутся после подготовки." : !pawn ? "Наблюдай за точками и счётом" : combat ? "Стычка: " + combat.name + " · действие ниже" : chosen.length > 1 ? "Приказ для " + mobile.length + " живых из " + chosen.length : dead ? "Возрождение через " + Math.max(0, Math.ceil(pawn.deadUntil - state.elapsed)) + " с"
       : pawn.retreating ? "Отступаю к своему респу" : pawn.moving ? requestedPoint ? "Бегу: " + requestedPoint : "Персонаж в пути" : "Выбери точку — персонаж побежит сам");
-    if (preparing) text("control", planned.length ? chosen.length === 1 ? "На старте: " + (pawn.orderPoint ?? "маршрут на карте") : "Приказы на старт: " + planned.length + " из " + chosen.length : "Назначь точку или маршрут — пойдём при старте матча.");
+    if (preparing && pawn) text("control", planned.length ? chosen.length === 1 ? "На старте: " + (pawn.orderPoint ?? "маршрут на карте") : "Приказы на старт: " + planned.length + " из " + chosen.length : "Назначь маршрут на старт");
     else if (pawn?.moving && pawn.orderPoint) text("control", "Бегу: " + pawn.orderPoint);
     if (wasMoving && !pawn?.moving) requestedPoint = null;
     if (state.recoveryRequired) text("control", "Партия приостановлена. Вернись в лобби, чтобы начать новую.");
@@ -423,10 +478,19 @@ export function createPanel({ root = document, connection, name, host, send }) {
     const activeCombat = state.combats?.find(fight => fight.members.includes(mine));
     const aura = petAuraPrompt(pawn, activeCombat, mine);
     element("pet-charge").hidden = !aura.visible; text("pet-charge", aura.label);
-    element("pet-help").hidden = !aura.visible; text("pet-help", aura.help);
+    const codes = ids => ids.map(id => state.slots.find(s => s.id === id)?.name.slice(0, 2)).filter(Boolean).join(", ");
+    const ownTeam = slot?.team;
+    const recipients = (activeCombat?.empowered ?? []).filter(id => state.slots.find(s => s.id === id)?.team === ownTeam);
+    const carriers = (activeCombat?.carriers ?? []).filter(id => state.slots.find(s => s.id === id)?.team === ownTeam);
+    element("pet-help").hidden = !aura.visible;
+    text("pet-help", carriers.length ? "Носитель: " + codes(carriers) + " · усилены: " + (codes(recipients) || "нет действующих ДД") : aura.help);
     element("combat").hidden = !combat;
     if (combat) renderCombat(combat); else { lastCombat = null; text("combat-score", ""); }
     const selectedInFight = combat && chosen.some(id => combat.members.includes(id));
+    const order = orderSummary(state, connection);
+    element("order-recipient").hidden = !order.ids.length || finished;
+    text("order-recipient", "Приказ: " + order.label + " → " + order.destination);
+    element("order-recipient").title = order.ids.map(id => state.slots.find(s => s.id === id).name.slice(0, 2)).join(" + ") + " → " + order.destination;
     text("points-heading", canMove ? preparing ? "Куда бежать на старте?" : selectedInFight ? "Сменить точку / выйти из боя" : "Куда бежать?" : "Контроль точек");
     text("move-label", canMove ? preparing ? "Пойдут по сигналу" : chosen.length > 1 ? "За " + mobile.length + " персонажей" : selectedInFight ? "" : "Нажми точку" : dead ? "После респа" : "Обзор");
     element("free-move").hidden = !canMove;
@@ -487,7 +551,8 @@ export function createPanel({ root = document, connection, name, host, send }) {
   });
   element("move-scope").addEventListener("change", () => {
     const scope = element("move-scope").value, all = ownedIds(state, connection);
-    const ids = scope === "single" ? [own()] : scope === "all" ? all : all.filter(id => state.slots.find(slot => slot.id === id).team === scope);
+    const pair = ownedSquads(state, connection).flatMap(side => side.groups.map((ids, i) => ({ key: side.team + "-pair-" + i, ids }))).find(g => g.key === scope);
+    const ids = pair?.ids ?? (scope === "single" ? [own()] : scope === "all" ? all : all.filter(id => state.slots.find(slot => slot.id === id).team === scope));
     if (ids.length) void run({ type: "select-pawns", ids, id: ids.includes(own()) ? own() : ids[0] });
   });
   element("take-host").addEventListener("click", () => void run({ type: "take-host" }));

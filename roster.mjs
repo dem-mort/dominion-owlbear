@@ -1,5 +1,5 @@
-import { CLASSES, classId } from "./classes.mjs?v=0.10.0";
-import { ASPECTS } from "./combat.mjs?v=0.10.0";
+import { CLASSES, classId } from "./classes.mjs?v=0.11.0";
+import { ASPECTS } from "./combat.mjs?v=0.11.0";
 
 // Same visibility policy as the map: own team, both teams in solo, both for
 // an unassigned referee. Never publish a remote enemy spawn roster to a player.

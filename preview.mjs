@@ -1,6 +1,7 @@
-import { createPanel } from "./panel-ui.mjs?v=0.10.0";
-import { modeOf, ownedIds, claimTargetIds, canStart } from "./control.mjs?v=0.10.0";
-import { CLASSES, classId, lineupSlots, aspectOptions, defaultAspect } from "./classes.mjs?v=0.10.0";
+import { createPanel } from "./panel-ui.mjs?v=0.11.0";
+import { modeOf, ownedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.0";
+import { CLASSES, classId, lineupSlots, aspectOptions, defaultAspect } from "./classes.mjs?v=0.11.0";
+import { teamSquads, swapMember } from "./squads.mjs?v=0.11.0";
 const classes = ["Воин", "Храмовник", "Разведчик", "Жрец", "Маг", "Бард"];
 const slots = ["К", "С"].flatMap(prefix => classes.map((name, index) => ({ id: prefix + (index + 1), name: prefix + (index + 1) + " · " + name, team: prefix === "К" ? "red" : "blue" })));
 const aspects = Object.fromEntries(slots.map(slot => [slot.id, slot.name.endsWith("Жрец") ? "heal" : slot.name.endsWith("Бард") ? "support" : "attack"]));
@@ -16,6 +17,13 @@ function addMatch(state) {
     pawns: Object.fromEntries(Object.keys(state.claims).map(id => [id, { hp: 76, aspect: state.aspects[id], pet: id === mine, moving: false, deadUntil: 0 }])), combats: [] });
 }
 function makeState(scenario) {
+  if (["teams-preparing-pairs", "teams-squads-custom"].includes(scenario)) {
+    const state = makeState("teams-preparing");
+    state.classes = { К2: "summoner", К4: "priest" }; state.slots = lineupSlots(slots, state.classes);
+    state.aspects.К2 = "heal"; state.aspects.К4 = "heal"; state.pawns.К2.aspect = "heal";
+    if (scenario === "teams-squads-custom") state.squads = { red: swapMember(teamSquads(state, "red"), 0, 1, "К5") };
+    state.selections.local = teamSquads(state, "red")[0]; state.active.local = state.selections.local[0]; return state;
+  }
   if (scenario.startsWith("class-")) {
     const [id, aspect] = scenario.slice(6).split("--");
     const state = makeState("selected");
@@ -35,7 +43,7 @@ function makeState(scenario) {
   const lobby = ["lobby", "selected", "player", "teams-lobby", "teams-ready", "solo-lobby", "solo-ready"].includes(scenario);
   const empty = ["lobby", "teams-lobby", "solo-lobby"].includes(scenario);
   const claims = empty ? {} : mode === "individual" ? picked() : ownerClaims(mode);
-  const state = { rules: "0.10.0", board: "preview", host: scenario === "player" ? "other" : "local", slots, aspects: { ...aspects }, controlMode: mode,
+  const state = { rules: "0.11.0", board: "preview", host: scenario === "player" ? "other" : "local", slots, aspects: { ...aspects }, controlMode: mode,
     active: empty ? {} : { local: mine }, selections: empty ? {} : { local: [mine] }, claims, phase: lobby ? "lobby" : scenario === "finished" ? "finished" : "playing" };
   if (!lobby) addMatch(state);
   if (scenario.includes("preparing")) {
@@ -111,6 +119,7 @@ async function send(command) {
   }
   if (command.type === "release") for (const id of modeOf(current) === "individual" ? [command.id] : ownedIds(current, "local")) delete current.claims[id];
   if (command.type === "select-pawns") { current.active.local = command.id; current.selections.local = command.ids; }
+  if (command.type === "set-squads") { current.squads ??= {}; current.squads[command.team] = command.groups; }
   if (command.type === "set-aspect") current.aspects[command.id] = command.aspect;
   if (command.type === "set-class" && Object.hasOwn(CLASSES, command.classId)) {
     current.classes ??= {}; current.classes[command.id] = command.classId;
@@ -168,6 +177,8 @@ addPreviewOption("solo-preparing-planned", "Приказ на старт · вс
 addPreviewOption("teams-respawn", "Респ · шесть союзников");
 addPreviewOption("teams-respawn-partial", "Респ · часть команды");
 addPreviewOption("solo-respawn", "Респ · обе команды");
+addPreviewOption("teams-preparing-pairs", "Подготовка · две пары с хилами");
+addPreviewOption("teams-squads-custom", "Подготовка · свои группы");
 scenario.addEventListener("change", () => {
   const previous = document.querySelector("main"), next = pristinePanel.cloneNode(true); next.style.width = previous.style.width; previous.replaceWith(next);
   current = makeState(scenario.value); panel = createPanel({ connection: "local", name: "Игрок", host: scenario.value !== "player", send }); panel.update(structuredClone(current));
