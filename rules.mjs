@@ -1,5 +1,5 @@
-import { combatTick, combatForPawn, combatClick, defaultAspect, aspectOptions, MAX_HP } from "./combat.mjs?v=0.11.0";
-export { combatForPawn, combatClick, combatViews, defaultAspect, aspectOptions, MAX_HP, ASPECTS, STEP_SECONDS, COMBAT_STEPS } from "./combat.mjs?v=0.11.0";
+import { combatTick, combatForPawn, combatClick, defaultAspect, aspectOptions, MAX_HP } from "./combat.mjs?v=0.11.1";
+export { combatForPawn, combatClick, combatViews, defaultAspect, aspectOptions, MAX_HP, ASPECTS, STEP_SECONDS, COMBAT_STEPS } from "./combat.mjs?v=0.11.1";
 export const NS = "ru.allods.dominion";
 export const TOTAL = 720;
 export const TARGET = 1000;

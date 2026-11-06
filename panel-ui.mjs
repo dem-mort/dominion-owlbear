@@ -1,9 +1,9 @@
-import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.11.0";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.0";
-import { isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.0";
-import { CLASSES, classId } from "./classes.mjs?v=0.11.0";
-import { spawnGroups } from "./roster.mjs?v=0.11.0";
-import { ownedSquads, memberLabel, swapMember, orderSummary } from "./squads.mjs?v=0.11.0";
+import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.11.1";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.1";
+import { isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.1";
+import { CLASSES, classId } from "./classes.mjs?v=0.11.1";
+import { spawnGroups } from "./roster.mjs?v=0.11.1";
+import { ownedSquads, memberLabel, swapMember, orderSummary } from "./squads.mjs?v=0.11.1";
 
 const ASPECT_LABEL = { attack: "Нападение", support: "Поддержка", heal: "Исцеление", defense: "Защита" };
 const ACTION_LABEL = { attack: "Атаковать", support: "Поддержать", heal: "Лечить", defense: "Защищаться" };
@@ -423,7 +423,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
   }
 
   function render() {
-    const compatible = state?.rules === "0.11.0";
+    const compatible = state?.rules === "0.11.1";
     element("loading").hidden = compatible;
     element("lobby").hidden = !compatible || state.phase !== "lobby";
     element("playing").hidden = !compatible || state.phase === "lobby";
@@ -454,7 +454,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
     element("preparation-card").hidden = !preparation;
     if (preparation) {
       text("preparation-timer", preparation.remaining);
-      text("preparation-status", "Старт по таймеру или согласию всех");
+      text("preparation-status", "Старт: таймер или все готовы");
       text("preparation-ready", (modeOf(state) === "teams" ? "Капитаны: " : modeOf(state) === "solo" ? "Тестировщик: " : "Игроки: ") + preparation.readyCount + "/" + preparation.requiredCount);
       text("preparation-help", preparation.eligible ? "Маршруты выполнятся при старте" : "Ожидаем готовность игроков");
       element("ready-early").hidden = !preparation.eligible;
