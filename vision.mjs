@@ -1,7 +1,8 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.9.0";
-import { targetViews } from "./targets.mjs?v=0.9.0";
-import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.9.0";
-import { CLASSES, classId, classTemplate } from "./classes.mjs?v=0.9.0";
+import { boardPanelViews } from "./board-panel.mjs?v=0.10.0";
+import { targetViews } from "./targets.mjs?v=0.10.0";
+import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.10.0";
+import { CLASSES, classId, classTemplate } from "./classes.mjs?v=0.10.0";
+import { planViews } from "./planning.mjs?v=0.10.0";
 
 export const HOME_KEY = NS + "/lobby-position";
 export const PAWN_KEY = NS + "/pawn";
@@ -46,6 +47,7 @@ export function visiblePawns(state, items, connection, role) {
     if (!status.deadUntil && Number.isFinite(status.hp) && status.hp < 100) nickname += " · " + status.hp + "%";
     if (status.deadUntil) nickname += " · " + Math.max(0, Math.ceil(status.deadUntil - state.elapsed)) + " с";
     if (status.pet) nickname += " · баф";
+    if (state.pawns?.[slot.id]?.atSpawn || status.deadUntil) nickname = slot.name.slice(0, 2);
     if (text?.type === "PLAIN") {
       text.plainText = nickname;
       text.richText = [{ type: "paragraph", children: [{ text: nickname }] }];
@@ -117,7 +119,8 @@ export function createLocalVision(OBR, connection, role, onError, Command) {
         const visible = visiblePawns(snapshot.state, snapshot.items, connection, role);
         const desired = new Map(visible.map(view => [view.source, view.item]));
         for (const view of classBadgeViews(snapshot.state, snapshot.items, visible, Command)) desired.set(view.source, view.item);
-        for (const view of boardPanelViews(snapshot.state, snapshot.items, Command)) desired.set(view.source, view.item);
+        for (const view of boardPanelViews(snapshot.state, snapshot.items, Command, connection, role)) desired.set(view.source, view.item);
+        for (const view of planViews(snapshot.state, snapshot.items, connection, role, Command)) desired.set(view.source, view.item);
         for (const view of targetViews(snapshot.state, snapshot.items, connection, Command)) desired.set(view.source, view.item);
         const removed = [...views.keys()].filter(id => !desired.has(id));
         if (removed.length) {

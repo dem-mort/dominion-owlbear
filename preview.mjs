@@ -1,6 +1,6 @@
-import { createPanel } from "./panel-ui.mjs?v=0.9.0";
-import { modeOf, ownedIds, claimTargetIds, canStart } from "./control.mjs?v=0.9.0";
-import { CLASSES, classId, lineupSlots, aspectOptions, defaultAspect } from "./classes.mjs?v=0.9.0";
+import { createPanel } from "./panel-ui.mjs?v=0.10.0";
+import { modeOf, ownedIds, claimTargetIds, canStart } from "./control.mjs?v=0.10.0";
+import { CLASSES, classId, lineupSlots, aspectOptions, defaultAspect } from "./classes.mjs?v=0.10.0";
 const classes = ["Воин", "Храмовник", "Разведчик", "Жрец", "Маг", "Бард"];
 const slots = ["К", "С"].flatMap(prefix => classes.map((name, index) => ({ id: prefix + (index + 1), name: prefix + (index + 1) + " · " + name, team: prefix === "К" ? "red" : "blue" })));
 const aspects = Object.fromEntries(slots.map(slot => [slot.id, slot.name.endsWith("Жрец") ? "heal" : slot.name.endsWith("Бард") ? "support" : "attack"]));
@@ -35,16 +35,29 @@ function makeState(scenario) {
   const lobby = ["lobby", "selected", "player", "teams-lobby", "teams-ready", "solo-lobby", "solo-ready"].includes(scenario);
   const empty = ["lobby", "teams-lobby", "solo-lobby"].includes(scenario);
   const claims = empty ? {} : mode === "individual" ? picked() : ownerClaims(mode);
-  const state = { rules: "0.9.0", board: "preview", host: scenario === "player" ? "other" : "local", slots, aspects: { ...aspects }, controlMode: mode,
+  const state = { rules: "0.10.0", board: "preview", host: scenario === "player" ? "other" : "local", slots, aspects: { ...aspects }, controlMode: mode,
     active: empty ? {} : { local: mine }, selections: empty ? {} : { local: [mine] }, claims, phase: lobby ? "lobby" : scenario === "finished" ? "finished" : "playing" };
   if (!lobby) addMatch(state);
   if (scenario.includes("preparing")) {
     state.phase = "preparing"; state.elapsed = 0; state.score = { red: 0, blue: 0 }; state.nextWave = 30;
     state.points.forEach(point => { point.team = null; });
-    Object.values(state.pawns).forEach(pawn => { pawn.hp = 100; pawn.pet = false; });
+    Object.values(state.pawns).forEach(pawn => { pawn.hp = 100; pawn.pet = false; pawn.atSpawn = true; });
     const required = [...new Set(Object.values(state.claims).map(claim => claim.connection))];
     state.preparation = { remaining: scenario === "preparing-ready" ? 37 : 60, required, ready: scenario === "preparing-ready" ? ["local"] : [] };
     if (scenario === "preparing-spectator") { state.claims = { С1: { connection: "other", name: "Александр" } }; state.preparation.required = ["other"]; }
+  }
+  if (scenario.endsWith("preparing-planned")) {
+    for (const [i, id] of Object.keys(state.claims).filter(id => state.claims[id].connection === "local").entries()) {
+      state.pawns[id].planned = true; state.pawns[id].orderPoint = ["Трефа", "Капля", "Звезда"][Math.floor(i / 2) % 3];
+    }
+    if (mode !== "individual") state.selections.local = slots.filter(slot => state.claims[slot.id]?.connection === "local").map(slot => slot.id);
+  }
+  if (scenario.includes("respawn")) {
+    for (const [i, id] of Object.keys(state.pawns).entries()) {
+      state.pawns[id].atSpawn = !scenario.endsWith("partial") || i % 2 === 0;
+      if (state.pawns[id].atSpawn) { state.pawns[id].deadUntil = i % 3 ? state.elapsed + 25 - i : 0; state.pawns[id].hp = state.pawns[id].deadUntil ? 0 : 100; }
+      state.claims[id].name = ["Александр", "ОченьДлинныйНикнейм", "Тестировщик", "Мария", "Игрок пять", "Шестой"][i % 6];
+    }
   }
   if (scenario.endsWith("-recovery")) state.host = "other";
   if (scenario === "moving") state.pawns[mine].moving = true;
@@ -112,7 +125,8 @@ async function send(command) {
   }
   if (command.type === "focus-combat") document.getElementById("preview-round").textContent = "Демо: цель находится в комнате Owlbear";
   if (command.type === "retreat") { for (const id of command.ids) current.pawns[id].retreating = true; current.combats = current.combats.filter(fight => !command.ids.some(id => fight.members.includes(id))); }
-  if (command.type === "move-to-point") { for (const id of command.ids) current.pawns[id].moving = true; }
+  if (command.type === "move-to-point") for (const id of command.ids) Object.assign(current.pawns[id], { moving: current.phase !== "preparing", planned: current.phase === "preparing", orderPoint: command.point });
+  if (command.type === "stop") for (const id of command.ids) Object.assign(current.pawns[id], { moving: false, planned: false, orderPoint: null });
   if (command.type === "start") {
     if (command.practice) { current.claims = { К1: { connection: "local", name: "К1" } }; current.active.local = "К1"; current.selections.local = ["К1"]; }
     else if (!canStart(current)) return;
@@ -120,13 +134,13 @@ async function send(command) {
     if (!command.practice) {
       current.elapsed = 0; current.score = { red: 0, blue: 0 }; current.nextWave = 30;
       current.points.forEach(point => { point.team = null; });
-      Object.values(current.pawns).forEach(pawn => { pawn.hp = 100; pawn.pet = false; });
+      Object.values(current.pawns).forEach(pawn => { pawn.hp = 100; pawn.pet = false; pawn.atSpawn = true; });
       current.preparation = { remaining: 60, required: [...new Set(Object.values(current.claims).map(claim => claim.connection))], ready: [] };
     }
   }
   if (command.type === "ready-early" && current.phase === "preparing" && current.preparation.required.includes("local")) {
     if (!current.preparation.ready.includes("local")) current.preparation.ready.push("local");
-    if (current.preparation.required.every(id => current.preparation.ready.includes(id))) { current.phase = "playing"; delete current.preparation; }
+    if (current.preparation.required.every(id => current.preparation.ready.includes(id))) { current.phase = "playing"; delete current.preparation; for (const pawn of Object.values(current.pawns)) { pawn.moving = Boolean(pawn.planned); pawn.planned = false; } }
   }
   if (["lobby", "recover-lobby"].includes(command.type)) { current.phase = "lobby"; current.combats = []; current.host = "local"; delete current.preparation; }
   panel.update(structuredClone(current));
@@ -148,6 +162,12 @@ for (const [value, label] of [["pet-carrier", "1 с · носитель-лека
 for (const [id, info] of Object.entries(CLASSES)) for (const aspect of info.aspects) addPreviewOption("class-" + id + "--" + aspect, "Класс: " + info.name + " · " + aspect);
 addPreviewOption("healer-pairs", "Состав: две пары ДД + хил");
 addPreviewOption("lineup-editor", "Настройки: классы всех 12");
+addPreviewOption("preparing-planned", "Приказ на старт · персонаж");
+addPreviewOption("teams-preparing-planned", "Приказ на старт · команда");
+addPreviewOption("solo-preparing-planned", "Приказ на старт · все 12");
+addPreviewOption("teams-respawn", "Респ · шесть союзников");
+addPreviewOption("teams-respawn-partial", "Респ · часть команды");
+addPreviewOption("solo-respawn", "Респ · обе команды");
 scenario.addEventListener("change", () => {
   const previous = document.querySelector("main"), next = pristinePanel.cloneNode(true); next.style.width = previous.style.width; previous.replaceWith(next);
   current = makeState(scenario.value); panel = createPanel({ connection: "local", name: "Игрок", host: scenario.value !== "player", send }); panel.update(structuredClone(current));

@@ -1,5 +1,5 @@
-import { combatTick, combatForPawn, combatClick, defaultAspect, aspectOptions, MAX_HP } from "./combat.mjs?v=0.9.0";
-export { combatForPawn, combatClick, combatViews, defaultAspect, aspectOptions, MAX_HP, ASPECTS, STEP_SECONDS, COMBAT_STEPS } from "./combat.mjs?v=0.9.0";
+import { combatTick, combatForPawn, combatClick, defaultAspect, aspectOptions, MAX_HP } from "./combat.mjs?v=0.10.0";
+export { combatForPawn, combatClick, combatViews, defaultAspect, aspectOptions, MAX_HP, ASPECTS, STEP_SECONDS, COMBAT_STEPS } from "./combat.mjs?v=0.10.0";
 export const NS = "ru.allods.dominion";
 export const TOTAL = 720;
 export const TARGET = 1000;
@@ -9,6 +9,10 @@ export const POINT_NAMES = ["Трефа", "Капля", "Звезда"];
 export const SLOT = /^[КС][1-6](?= · )/u;
 export const WAVE_FIRST = 30;
 export const WAVE_INTERVAL = 120;
+// Preserve the prototype's mean rate (formerly 30 per 30 s), with a real
+// one-second score pulse. The retail server coefficient is not in client Lua.
+export const SCORE_STEP = 1;
+export const POINT_SCORE = 1;
 
 
 
@@ -93,7 +97,7 @@ export function newMatch(board, claims, routeSeconds, calibrated) {
     speed: distance(board.spawn.red, board.points[1].position) / routeSeconds,
     points: board.points.map(point => ({ ...point, team: null, progress: 0, capturing: null, captureRate: 0, clash: 0 })),
     pets: board.pets.map(pet => ({ ...pet, available: false, pickup: null, progress: 0 })),
-    score: { red: 0, blue: 0 }, nextScore: 30, nextWave: WAVE_FIRST,
+    score: { red: 0, blue: 0 }, nextScore: SCORE_STEP, nextWave: WAVE_FIRST,
     nextCombat: 0, combatRevision: 0,
     lastClash: null, winner: null,
   };
@@ -131,8 +135,20 @@ function advanceCapture(point, sides, elapsed) {
 }
 
 export function tick(match, elapsed, die = () => 1 + Math.floor(Math.random() * 6)) {
+  if (match.winner || !Number.isFinite(elapsed) || elapsed <= 0) return;
+  let remaining = Math.min(elapsed, TOTAL - match.elapsed);
+  while (remaining > 1e-8 && !match.winner) {
+    // Do not credit a newly captured point retroactively for a large caller step.
+    const step = Math.min(remaining, Math.max(1e-8, match.nextScore - match.elapsed));
+    tickStep(match, step, die); remaining -= step;
+  }
+}
+
+function tickStep(match, elapsed, die) {
   if (match.winner || elapsed <= 0) return;
   match.elapsed = Math.min(TOTAL, match.elapsed + elapsed);
+  if (Math.abs(match.elapsed - match.nextScore) < 1e-8) match.elapsed = match.nextScore;
+  if (TOTAL - match.elapsed < 1e-8) match.elapsed = TOTAL;
   for (const pawn of Object.values(match.pawns)) {
     if (pawn.deadUntil && match.elapsed >= pawn.deadUntil) { pawn.deadUntil = 0; pawn.deathReason = null; pawn.hp = MAX_HP; }
     if (match.practice && pawn.bot && !pawn.deadUntil && !pawn.destination && !combatForPawn(match, pawn.id) &&
@@ -179,9 +195,9 @@ export function tick(match, elapsed, die = () => 1 + Math.floor(Math.random() * 
       if (combat && match.elapsed >= combat.endsAt - 1.5) combatClick(match, pawn.id, combat.id, combat.round);
     }
   }
-  if (match.elapsed >= match.nextScore) {
-    match.nextScore += 30;
-    for (const point of match.points) if (point.team) match.score[point.team] += 30;
+  if (match.elapsed >= match.nextScore - 1e-8) {
+    match.nextScore += SCORE_STEP;
+    for (const point of match.points) if (point.team) match.score[point.team] = Math.min(TARGET, match.score[point.team] + POINT_SCORE);
   }
   const { red, blue } = match.score;
   if (match.elapsed >= TOTAL || red >= TARGET || blue >= TARGET) {

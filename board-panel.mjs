@@ -1,9 +1,10 @@
-import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.9.0";
-import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.9.0";
-import { modeOf } from "./control.mjs?v=0.9.0";
-import { captureStatus } from "./rules.mjs?v=0.9.0";
+import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.10.0";
+import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.10.0";
+import { modeOf } from "./control.mjs?v=0.10.0";
+import { captureStatus } from "./rules.mjs?v=0.10.0";
+import { respawnFields } from "./roster.mjs?v=0.10.0";
 const PANEL_KEY = "ru.allods.dominion/help-view";
-const guideUrl = new URL("./guide.svg?v=0.9.0", import.meta.url).href;
+const guideUrl = new URL("./guide.svg?v=0.10.0", import.meta.url).href;
 const blankUrl = new URL("./blank.svg", import.meta.url).href;
 const COLORS = { text: "#e8f0f5", muted: "#a8bac8", red: "#ffb0aa", blue: "#9adeff", amber: "#ffd296", green: "#a7e2c4" };
 // Owlbear validates every TextStyle field, including text hidden on an image.
@@ -37,7 +38,7 @@ export function panelFields(state) {
     : preparing ? "Подготовка " + clock(state.preparation?.remaining) : playing ? state.practice ? "Тренировка" : mode === "solo" ? "Один за 12" : mode === "teams" ? "Игрок против игрока" : "Матч идёт" : lobby;
   const steps = preparing ? [
     ["Распределите пары", "Договоритесь о флангах и центре."],
-    ["Приготовьтесь к разбежке", "Таймер матча ещё не идёт."],
+    ["Назначьте точку или маршрут", "Персонажи побегут при старте."],
     ["Можно начать раньше", "Нужно согласие всех участников."],
   ] : playing ? [
     ["Выбери точку назначения", "Кнопка точки запускает бег."],
@@ -80,7 +81,7 @@ export function panelFields(state) {
   return fields;
 }
 
-export function boardPanelViews(state, items, Command) {
+export function boardPanelViews(state, items, Command, connection, role) {
   if (!state || ["Трефа", "Капля", "Звезда"].map(name => items.find(item => item.layer === "PROP" && item.name === name)?.id).join("/") !== state.board) return [];
   const map = items.find(item => item.layer === "MAP" && item.name === "Осколок Силы · Карта");
   if (!map?.image) return [];
@@ -109,7 +110,10 @@ export function boardPanelViews(state, items, Command) {
       metadata: { [PANEL_KEY]: spec.id }, commands: spec.commands, fillRule: "nonzero", style: spec.style,
     } });
   }
-  for (const [index, field] of panelFields(state).entries()) {
+  const spawn = connection ? respawnFields(state, connection, role) : [];
+  const replacedTitles = new Set(spawn.filter(field => field.id.startsWith("spawn-heading-")).map(field => "map-team-" + field.id.slice(14)));
+  const fields = [...panelFields(state).filter(field => !replacedTitles.has(field.id)), ...spawn];
+  for (const [index, field] of fields.entries()) {
     const dx = (field.x - offset.x) * scale.x * ratio;
     const dy = (field.y - offset.y) * scale.y * ratio;
     const item = {

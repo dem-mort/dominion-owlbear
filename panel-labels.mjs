@@ -122,7 +122,7 @@ export const STATIC_FIELDS = [
   },
   {
     "id": "static-10",
-    "text": "+30 очков / 30 с",
+    "text": "+1 очко/с за точку",
     "x": 1194.0,
     "y": 477.765,
     "width": 160,

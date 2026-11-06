@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Доминион</title>
-<link rel="stylesheet" href="./panel.css?v=0.9.0">
+<link rel="stylesheet" href="./panel.css?v=0.10.0">
 <main class="app">
   <header class="app-header">
     <div><div class="eyebrow">ДОМИНИОН / 6×6</div><h1>Осколок Силы</h1></div>
@@ -87,7 +87,9 @@
           <li><button type="button" data-point="Звезда"><span class="point-symbol" aria-hidden="true">★</span><span class="point-info"><b>Звезда</b><span class="point-status">Свободна</span></span><span class="point-arrow" aria-hidden="true">→</span></button></li>
         </ul>
         <p id="free-move" class="fine" hidden>Свободный маршрут: инструмент «Бег» на карте.</p>
+        <button id="cancel-plan" type="button" class="secondary" hidden>Отменить приказ на старт</button>
       </section>
+      <section id="spawn-roster" class="spawn-roster" hidden aria-labelledby="spawn-heading"><h3 id="spawn-heading">На респе</h3><div id="spawn-members"></div></section>
       <section class="pet-card"><div class="section-heading"><h3>Баф питомца</h3><span class="amber">+30% к урону ДД</span></div><p id="pets"></p><p class="fine">На лапе карты · 5 с без врагов</p><p class="fine">Одна стычка · носитель усиливает ДД своей команды · не складывается</p></section>
       <p id="clash" class="clash" role="status" hidden></p>
       <button id="practice-opponent" class="secondary practice-opponent" type="button" hidden>Добавить соперника к Капле</button>
@@ -98,5 +100,5 @@
   </section>
   <p id="notice" role="status" class="notice" hidden></p>
 </main>
-<script type="module" src="./panel.mjs?v=0.9.0"></script>
+<script type="module" src="./panel.mjs?v=0.10.0"></script>
 </html>

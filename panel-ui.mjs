@@ -1,7 +1,8 @@
-import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.9.0";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.9.0";
-import { isOlderSnapshot } from "./snapshot-sync.mjs?v=0.9.0";
-import { CLASSES, classId } from "./classes.mjs?v=0.9.0";
+import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.10.0";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.10.0";
+import { isOlderSnapshot } from "./snapshot-sync.mjs?v=0.10.0";
+import { CLASSES, classId } from "./classes.mjs?v=0.10.0";
+import { spawnGroups } from "./roster.mjs?v=0.10.0";
 
 const ASPECT_LABEL = { attack: "Нападение", support: "Поддержка", heal: "Исцеление", defense: "Защита" };
 const ACTION_LABEL = { attack: "Атаковать", support: "Поддержать", heal: "Лечить", defense: "Защищаться" };
@@ -15,7 +16,7 @@ export function panelContext(state, connection, host) {
   return { mine, slot, count: Object.keys(state.claims ?? {}).length, hostControls: host && state.host === connection };
 }
 export function preparationPrompt(state, connection) {
-  if (state?.phase !== "preparing") return null;
+  if (state?.phase !== "preparing" || state.recoveryRequired) return null;
   const preparation = state.preparation ?? {};
   const required = [...new Set(preparation.required ?? [])];
   const ready = new Set((preparation.ready ?? []).filter(id => required.includes(id)));
@@ -281,9 +282,29 @@ export function createPanel({ root = document, connection, name, host, send }) {
       scope.replaceChildren(...groups.map(group => { const option = make("option", "", group.text); option.value = group.value; return option; }));
     }
     if (current === "custom" && !scope.querySelector('option[value="custom"]')) { const option = make("option", "", "Группа · " + chosen.length); option.value = "custom"; option.disabled = true; scope.append(option); }
-    scope.value = current; scope.disabled = waiting || state.phase !== "playing";
+    scope.value = current; scope.disabled = waiting || !["preparing", "playing"].includes(state.phase) || Boolean(state.recoveryRequired);
     const alive = chosen.filter(id => state.pawns[id] && !state.pawns[id].deadUntil).length;
-    text("selection-summary", state.phase === "preparing" ? "Можно посмотреть своих персонажей. Движение откроется после подготовки." : "Приказ для " + chosen.length + " · в строю " + alive + ". «Бег» на карте управляет тем же выбором.");
+    text("selection-summary", state.phase === "preparing" ? "Выбери персонажа или группу и назначь маршрут. Пойдут при старте." : "Приказ для " + chosen.length + " · в строю " + alive + ". «Бег» на карте управляет тем же выбором.");
+  }
+
+  let lastSpawn = "";
+  function renderSpawn() {
+    const groups = spawnGroups(state, connection, host ? "GM" : "PLAYER");
+    element("spawn-roster").hidden = !groups.length;
+    const signature = JSON.stringify(groups);
+    if (signature === lastSpawn) return;
+    lastSpawn = signature;
+    element("spawn-members").replaceChildren(...groups.map(group => {
+      const box = make("div", "spawn-team");
+      box.append(make("h4", group.team, TEAM_NAME[group.team] + " · " + group.members.length));
+      if (!group.members.length) box.append(make("p", "fine", "Никого нет"));
+      for (const member of group.members) {
+        const row = make("div", "spawn-row"), name = make("div", "spawn-name");
+        name.append(make("b", "", member.code + " · " + member.name), make("small", "", member.className + " · " + member.aspect));
+        row.append(name, make("span", member.remaining ? "amber" : "success", member.status)); box.append(row);
+      }
+      return box;
+    }));
   }
 
   function renderFightTabs(fights, focused) {
@@ -349,7 +370,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
   }
 
   function render() {
-    const compatible = state?.rules === "0.9.0";
+    const compatible = state?.rules === "0.10.0";
     element("loading").hidden = compatible;
     element("lobby").hidden = !compatible || state.phase !== "lobby";
     element("playing").hidden = !compatible || state.phase === "lobby";
@@ -368,7 +389,8 @@ export function createPanel({ root = document, connection, name, host, send }) {
     const selectionKey = JSON.stringify([mine, chosen]);
     if (selectionKey !== lastSelectionKey) { requestedPoint = null; wasMoving = false; lastSelectionKey = selectionKey; }
     const mobile = chosen.filter(id => state.pawns[id] && !state.pawns[id].deadUntil);
-    const canMove = state.phase === "playing" && !state.recoveryRequired && mobile.length > 0;
+    const canMove = ["preparing", "playing"].includes(state.phase) && !state.recoveryRequired && mobile.length > 0;
+    const planned = chosen.filter(id => state.pawns[id]?.planned);
     for (const key of combatPressed) if (!fights.some(fight => key === fight.id + "/" + fight.round)) combatPressed.delete(key);
     renderMultiControls(context); renderFightTabs(fights, combat);
     const role = ASPECTS[pawn?.aspect ?? "attack"];
@@ -392,6 +414,8 @@ export function createPanel({ root = document, connection, name, host, send }) {
     text("player-state", pawn ? dead ? pawn.deathReason === "inactive" ? "Поражение без действий" : "Персонаж погиб" : role.short + " · " + role.help : "Присоединиться можно в следующем матче");
     text("control", finished ? "" : preparing ? "Осмотри карту. Движение и бой начнутся после подготовки." : !pawn ? "Наблюдай за точками и счётом" : combat ? "Стычка: " + combat.name + " · действие ниже" : chosen.length > 1 ? "Приказ для " + mobile.length + " живых из " + chosen.length : dead ? "Возрождение через " + Math.max(0, Math.ceil(pawn.deadUntil - state.elapsed)) + " с"
       : pawn.retreating ? "Отступаю к своему респу" : pawn.moving ? requestedPoint ? "Бегу: " + requestedPoint : "Персонаж в пути" : "Выбери точку — персонаж побежит сам");
+    if (preparing) text("control", planned.length ? chosen.length === 1 ? "На старте: " + (pawn.orderPoint ?? "маршрут на карте") : "Приказы на старт: " + planned.length + " из " + chosen.length : "Назначь точку или маршрут — пойдём при старте матча.");
+    else if (pawn?.moving && pawn.orderPoint) text("control", "Бегу: " + pawn.orderPoint);
     if (wasMoving && !pawn?.moving) requestedPoint = null;
     if (state.recoveryRequired) text("control", "Партия приостановлена. Вернись в лобби, чтобы начать новую.");
     wasMoving = Boolean(pawn?.moving);
@@ -403,9 +427,12 @@ export function createPanel({ root = document, connection, name, host, send }) {
     element("combat").hidden = !combat;
     if (combat) renderCombat(combat); else { lastCombat = null; text("combat-score", ""); }
     const selectedInFight = combat && chosen.some(id => combat.members.includes(id));
-    text("points-heading", canMove ? selectedInFight ? "Сменить точку / выйти из боя" : "Куда бежать?" : "Контроль точек");
-    text("move-label", canMove ? chosen.length > 1 ? "За " + mobile.length + " персонажей" : selectedInFight ? "" : "Нажми точку" : preparing ? "После подготовки" : dead ? "После респа" : "Обзор");
+    text("points-heading", canMove ? preparing ? "Куда бежать на старте?" : selectedInFight ? "Сменить точку / выйти из боя" : "Куда бежать?" : "Контроль точек");
+    text("move-label", canMove ? preparing ? "Пойдут по сигналу" : chosen.length > 1 ? "За " + mobile.length + " персонажей" : selectedInFight ? "" : "Нажми точку" : dead ? "После респа" : "Обзор");
     element("free-move").hidden = !canMove;
+    text("free-move", preparing ? "Маршрут заранее: инструмент «Бег» на карте." : "Свободный маршрут: инструмент «Бег» на карте.");
+    element("cancel-plan").hidden = !preparing || !mobile.length;
+    element("cancel-plan").disabled = waiting || !planned.length;
     for (const button of pointButtons) {
       const point = state.points.find(point => point.name === button.dataset.point);
       const fight = state.combats?.find(combat => combat.kind === "point" && combat.name === point.name);
@@ -414,9 +441,12 @@ export function createPanel({ root = document, connection, name, host, send }) {
       const status = capture ? capture + " · " + speed : fight ? "Идёт бой" : point.team ? TEAM_NAME[point.team] : "Свободна";
       button.disabled = !canMove || waiting;
       button.dataset.owner = point.team ?? ""; button.dataset.contested = String(Boolean(fight) || point.progress > 0);
-      button.querySelector(".point-status").textContent = status;
-      button.setAttribute("aria-label", (canMove ? "Бежать: " : "") + point.name + " · " + status);
+      const assigned = preparing && planned.filter(id => state.pawns[id].orderPoint === point.name).length;
+      button.dataset.planned = String(Boolean(assigned));
+      button.querySelector(".point-status").textContent = assigned ? "На старте · " + assigned : status;
+      button.setAttribute("aria-label", (canMove ? preparing ? "Назначить: " : "Бежать: " : "") + point.name + " · " + status);
     }
+    renderSpawn();
     const ready = state.pets.filter(pet => pet.available && !pet.fighting).map(pet => pet.name);
     const contested = state.pets.filter(pet => pet.fighting).map(pet => pet.name);
     text("pets", (ready.length ? "Готовы: " + ready.join(", ") : state.nextWave < TOTAL ? "Новая волна через " + timer(state.nextWave - state.elapsed) : "Новых волн не будет") + (contested.length ? " · бой за " + contested.join(", ") : ""));
@@ -467,7 +497,8 @@ export function createPanel({ root = document, connection, name, host, send }) {
   });
   element("release").addEventListener("click", () => void run({ type: "release", id: own() }));
   element("practice-opponent").addEventListener("click", () => void run({ type: "practice-opponent" }));
-  for (const button of pointButtons) button.addEventListener("click", () => { if (state?.phase !== "playing") return; requestedPoint = button.dataset.point; void run({ type: "move-to-point", id: own(), ids: selectedIds(state, connection), point: button.dataset.point }); });
+  for (const button of pointButtons) button.addEventListener("click", () => { if (!["preparing", "playing"].includes(state?.phase) || state.recoveryRequired) return; requestedPoint = button.dataset.point; void run({ type: "move-to-point", id: own(), ids: selectedIds(state, connection), point: button.dataset.point }); });
+  element("cancel-plan").addEventListener("click", () => { if (state?.phase === "preparing" && !state.recoveryRequired) void run({ type: "stop", id: own(), ids: selectedIds(state, connection) }); });
   element("combat-action").addEventListener("click", async () => {
     const combat = focusedFight();
     if (!combat || waiting) return;

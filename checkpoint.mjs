@@ -1,14 +1,14 @@
-import { newMatch } from "./rules.mjs?v=0.9.0";
-import { lineupSlots } from "./classes.mjs?v=0.9.0";
+import { newMatch, SCORE_STEP } from "./rules.mjs?v=0.10.0";
+import { lineupSlots } from "./classes.mjs?v=0.10.0";
 
 // Public snapshots already contain health/claims/captures and combat views.
 // Store only the missing simulation state, avoiding a second full match copy.
 export function checkpoint(match) {
   const ids = match.board.slots.map(slot => slot.id), index = id => ids.indexOf(id);
   return {
-    schema: 1, nextScore: match.nextScore, nextCombat: match.nextCombat,
+    schema: 1, nextScore: match.nextScore, scoreStep: SCORE_STEP, nextCombat: match.nextCombat,
     pawns: ids.map(id => { const p = match.pawns[id]; return [p.position.x, p.position.y,
-      p.destination ? [p.destination.x, p.destination.y] : null, p.hp, Number.isFinite(p.lastCombatAt) ? p.lastCombatAt : null, Boolean(p.bot)]; }),
+      p.destination ? [p.destination.x, p.destination.y] : null, p.hp, Number.isFinite(p.lastCombatAt) ? p.lastCombatAt : null, Boolean(p.bot), p.orderPoint ?? null]; }),
     pets: match.pets.map(p => [p.progress, p.pickup ?? null]),
     fights: [...match.points, ...match.pets].map(area => {
       const c = area.combat;
@@ -38,9 +38,10 @@ export function restoreCheckpoint(board, snapshot) {
         row[2] !== null && (!Array.isArray(row[2]) || row[2].length !== 2 || !row[2].every(Number.isFinite))) return null;
     Object.assign(match.pawns[id], { position: { x: row[0], y: row[1] }, destination: row[2] && { x: row[2][0], y: row[2][1] },
       hp: row[3], lastCombatAt: row[4] ?? -Infinity, bot: row[5], deadUntil: visible?.deadUntil ?? 0,
-      pet: Boolean(visible?.pet), deathReason: visible?.deathReason ?? null, retreating: Boolean(visible?.retreating) });
+      pet: Boolean(visible?.pet), deathReason: visible?.deathReason ?? null, retreating: Boolean(visible?.retreating), orderPoint: row[6] ?? null });
   }
-  Object.assign(match, { elapsed: snapshot.elapsed, score: { ...snapshot.score }, nextScore: data.nextScore,
+  Object.assign(match, { elapsed: snapshot.elapsed, score: { ...snapshot.score },
+    nextScore: data.scoreStep === SCORE_STEP ? data.nextScore : (Math.floor(snapshot.elapsed / SCORE_STEP + 1e-8) + 1) * SCORE_STEP,
     nextWave: snapshot.nextWave, nextCombat: data.nextCombat, stepSeconds: snapshot.actionSeconds === 1 ? 1 : 3,
     practice: Boolean(snapshot.practice), practiceOpponent: Boolean(snapshot.practiceOpponent),
     lastClash: snapshot.lastClash ?? null, winner: snapshot.winner ?? null });

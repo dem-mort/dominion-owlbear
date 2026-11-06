@@ -47,6 +47,14 @@ fieldset { border: 0; padding: 0; margin: 9px 0 0; min-width: 0; }
 legend { padding: 0; color: var(--muted); font-size: 10px; margin-bottom: 5px; }
 .aspect-options { display: flex; gap: 5px; flex-wrap: wrap; }
 #class-choice { width: 100%; margin: 4px 0 8px; }
+.point-list button[data-planned="true"] { border-color: var(--blue); background: #274858; }
+#cancel-plan { width: 100%; margin-top: 7px; }
+.spawn-roster { margin-top: 14px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: #172a36; }
+.spawn-team h4 { margin: 9px 0 5px; font-size: 11px; }
+.spawn-team h4.red { color: var(--red); }.spawn-team h4.blue { color: var(--blue); }
+.spawn-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid var(--line); font-size: 11px; }
+.spawn-name { min-width: 0; }.spawn-name b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spawn-name small { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; }
 #aspect-lineup .aspect-row { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 9px; }
 #aspect-lineup .aspect-row label { grid-column: 1 / -1; }
 #aspect-lineup .aspect-row select { width: 100%; min-width: 0; }

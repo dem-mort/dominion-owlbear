@@ -1,11 +1,11 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.9.0";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.9.0";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.9.0";
-import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.9.0";
-import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.9.0";
-import { CLASSES, classId, lineupSlots, classTemplate } from "./classes.mjs?v=0.9.0";
-import { createAuthority } from "./authority.mjs?v=0.9.0";
-import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.9.0";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.10.0";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.10.0";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.10.0";
+import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.10.0";
+import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.10.0";
+import { CLASSES, classId, lineupSlots, classTemplate } from "./classes.mjs?v=0.10.0";
+import { createAuthority } from "./authority.mjs?v=0.10.0";
+import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.10.0";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -50,6 +50,7 @@ export async function initialize(OBR, Command) {
   let lastItemSync = -Infinity;
   let lastCombatRevision = -1;
   let combatDirty = false;
+  let planDirty = false;
   let publishedItems = new Map();
   let sceneItems = [];
   let sceneReady = false;
@@ -189,7 +190,7 @@ export async function initialize(OBR, Command) {
     normalizeSelection();
     const snapshot = {
       ...(legacySnapshot ?? {}),
-      rules: "0.9.0",
+      rules: "0.10.0",
       board: board.key, host: connection,
       epoch: (state?.board === board.key ? epochOf(state) : 0) + (acquire ? 1 : 0),
       revision: !acquire && state?.board === board.key && Number.isSafeInteger(state.revision) ? state.revision + 1 : 1,
@@ -219,7 +220,11 @@ export async function initialize(OBR, Command) {
         pets: match.pets.map(({ name, available, combat }) => ({ name, available, fighting: Boolean(combat) })),
         pawns: Object.fromEntries(Object.values(match.pawns)
           .filter(pawn => pawn.claim)
-          .map(({ id, pet, deadUntil, destination, deathReason, hp, aspect, retreating }) => [id, { pet, deadUntil, deathReason, hp: Math.round(hp), aspect, retreating, moving: Boolean(destination) }])),
+          .map(pawn => [pawn.id, { pet: pawn.pet, deadUntil: pawn.deadUntil, deathReason: pawn.deathReason,
+            hp: Math.round(pawn.hp), aspect: pawn.aspect, retreating: pawn.retreating,
+            moving: !preparation && Boolean(pawn.destination), planned: Boolean(preparation && pawn.destination),
+            orderPoint: pawn.destination ? pawn.orderPoint ?? null : null,
+            atSpawn: Boolean(pawn.deadUntil) || Math.hypot(pawn.position.x - board.spawn[pawn.team].x, pawn.position.y - board.spawn[pawn.team].y) <= 36 * board.scale }])),
       });
       lastCombatRevision = match.combatRevision;
       combatDirty = false;
@@ -459,7 +464,7 @@ export async function initialize(OBR, Command) {
             ids.some(id => typeof id !== "string" || match?.pawns[id]?.claim?.connection !== connectionId)) return [];
         return ids;
       };
-      const living = () => !match || preparation || match.winner ? [] : commandIds().map(id => match.pawns[id]).filter(pawn => !pawn.deadUntil);
+      const living = (planning = false) => !match || preparation && !planning || match.winner ? [] : commandIds().map(id => match.pawns[id]).filter(pawn => !pawn.deadUntil);
       const formation = (index, count) => {
         if (count < 2) return { x: 0, y: 0 };
         const cols = Math.ceil(Math.sqrt(count)), rows = Math.ceil(count / cols), gap = 18 * board.scale;
@@ -492,7 +497,7 @@ export async function initialize(OBR, Command) {
         return;
       }
       if (data.type === "move" || data.type === "move-to-point") {
-        const pawns = living();
+        const pawns = living(true);
         if (!pawns.length) return;
         const { min, max } = board.bounds;
         const target = data.type === "move-to-point"
@@ -504,11 +509,14 @@ export async function initialize(OBR, Command) {
           const offset = formation(index, pawns.length);
           pawn.destination = { x: Math.max(min.x, Math.min(max.x, x + offset.x)), y: Math.max(min.y, Math.min(max.y, y + offset.y)) };
           pawn.retreating = false;
+          pawn.orderPoint = data.type === "move-to-point" ? data.point : null;
         }
+        if (preparation) planDirty = true;
         return;
       }
       if (data.type === "stop") {
-        for (const pawn of living()) { pawn.destination = null; pawn.retreating = false; }
+        for (const pawn of living(true)) { pawn.destination = null; pawn.retreating = false; pawn.orderPoint = null; }
+        if (preparation) planDirty = true;
         return;
       }
       const manage = async () => {
@@ -575,6 +583,7 @@ export async function initialize(OBR, Command) {
           match.stepSeconds = !practice && controlMode === "individual" && claimCount === 12 &&
             new Set(Object.values(claims).map(claim => claim.connection)).size === 12 ? 1 : 3;
           preparation = practice ? null : { remaining: 60, ready: new Set() };
+          planDirty = false;
           lastTick = clock();
           publishedItems.clear();
           await syncItems(true);
@@ -639,7 +648,10 @@ export async function initialize(OBR, Command) {
         if (preparation) {
           preparation.remaining = Math.max(0, preparation.remaining - elapsed);
           if (preparation.remaining <= 1e-8) preparation = null;
-          if (!preparation || now - lastPublish >= 1) await publish();
+          if (!preparation || planDirty || now - lastPublish >= 1) {
+            const changedPlan = planDirty; planDirty = false;
+            await publish(false, changedPlan);
+          }
           return;
         }
         tick(match, elapsed);
@@ -660,7 +672,7 @@ export async function initialize(OBR, Command) {
   let lastMove = 0;
 
   function ownPawn() {
-    if (!sceneReady || state?.phase !== "playing" || state.recoveryRequired) return null;
+    if (!sceneReady || !["preparing", "playing"].includes(state?.phase) || state.recoveryRequired) return null;
     const id = activeId(state, connection), ids = selectedIds(state, connection);
     return id ? { id, ids, board: state.board, host: state.host } : null;
   }

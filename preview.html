@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Доминион</title>
-<link rel="stylesheet" href="./panel.css?v=0.9.0">
+<link rel="stylesheet" href="./panel.css?v=0.10.0">
 
 <style>body{padding:18px 0;display:flex;flex-direction:column;align-items:center;gap:14px;background:#08131a}.app{width:340px;height:640px;outline:1px solid #456377;border-radius:12px}.preview-controls{width:min(340px,95vw);display:grid;gap:7px;font:12px system-ui;color:#a8bac8}.preview-controls select{padding:8px}.preview-controls button{padding:7px}.preview-note{margin:0;font-size:10px}@media(max-width:339px){.app{width:320px}}</style>
 <div class="preview-controls"><strong>Предпросмотр панели · 340 × 640</strong><label for="preview-state">Сценарий</label><select id="preview-state"><option value="lobby">Лобби ведущего</option><option value="selected">Выбран Жрец</option><option value="player">Обычный игрок</option><option value="moving">Движение</option><option value="combat">Бой · действие</option><option value="ready">Бой · принято</option><option value="missed">Бой · пропуск</option><option value="dead">Возрождение</option><option value="spectator">Зритель</option><option value="teams-lobby">2 игрока · пустое лобби</option><option value="teams-ready">2 игрока · команды готовы</option><option value="teams-playing">2 игрока · управление</option><option value="teams-combats">2 игрока · две стычки</option><option value="solo-lobby">1 игрок · пустое лобби</option><option value="solo-ready">1 игрок · все 12 готовы</option><option value="solo-playing">1 игрок · управление</option><option value="solo-combats">1 игрок · две стычки</option><option value="preparing">Подготовка · 1:00</option><option value="preparing-ready">Подготовка · готов</option><option value="preparing-spectator">Подготовка · ведущий без фишки</option><option value="preparing-recovery">Подготовка · другой ведущий</option><option value="solo-preparing">1 игрок · подготовка</option><option value="teams-preparing">2 игрока · подготовка</option><option value="playing-recovery">Матч · восстановление</option><option value="finished-recovery">Итог · восстановление</option><option value="teams-capture-contested">Захват · перевес 3×1</option><option value="teams-capture-paused">Захват · пауза</option><option value="teams-capture-rollback">Захват · откат</option><option value="finished">Итог</option></select><button id="preview-round">Следующий сигнал боя</button><button id="preview-size">Ширина: 340 → 320</button><p class="preview-note">Демонстрационные данные. Комната Owlbear не затрагивается.</p></div><main class="app">
@@ -89,7 +89,9 @@
           <li><button type="button" data-point="Звезда"><span class="point-symbol" aria-hidden="true">★</span><span class="point-info"><b>Звезда</b><span class="point-status">Свободна</span></span><span class="point-arrow" aria-hidden="true">→</span></button></li>
         </ul>
         <p id="free-move" class="fine" hidden>Свободный маршрут: инструмент «Бег» на карте.</p>
+        <button id="cancel-plan" type="button" class="secondary" hidden>Отменить приказ на старт</button>
       </section>
+      <section id="spawn-roster" class="spawn-roster" hidden aria-labelledby="spawn-heading"><h3 id="spawn-heading">На респе</h3><div id="spawn-members"></div></section>
       <section class="pet-card"><div class="section-heading"><h3>Баф питомца</h3><span class="amber">+30% к урону ДД</span></div><p id="pets"></p><p class="fine">На лапе карты · 5 с без врагов</p><p class="fine">Одна стычка · носитель усиливает ДД своей команды · не складывается</p></section>
       <p id="clash" class="clash" role="status" hidden></p>
       <button id="practice-opponent" class="secondary practice-opponent" type="button" hidden>Добавить соперника к Капле</button>
@@ -100,5 +102,5 @@
   </section>
   <p id="notice" role="status" class="notice" hidden></p>
 </main>
-<script type="module" src="./preview.mjs?v=0.9.0"></script>
+<script type="module" src="./preview.mjs?v=0.10.0"></script>
 </html>
