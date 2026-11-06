@@ -1,5 +1,6 @@
-import { createPanel } from "./panel-ui.mjs?v=0.8.2";
-import { modeOf, ownedIds, claimTargetIds, canStart } from "./control.mjs?v=0.8.2";
+import { createPanel } from "./panel-ui.mjs?v=0.9.0";
+import { modeOf, ownedIds, claimTargetIds, canStart } from "./control.mjs?v=0.9.0";
+import { CLASSES, classId, lineupSlots, aspectOptions, defaultAspect } from "./classes.mjs?v=0.9.0";
 const classes = ["Воин", "Храмовник", "Разведчик", "Жрец", "Маг", "Бард"];
 const slots = ["К", "С"].flatMap(prefix => classes.map((name, index) => ({ id: prefix + (index + 1), name: prefix + (index + 1) + " · " + name, team: prefix === "К" ? "red" : "blue" })));
 const aspects = Object.fromEntries(slots.map(slot => [slot.id, slot.name.endsWith("Жрец") ? "heal" : slot.name.endsWith("Бард") ? "support" : "attack"]));
@@ -15,11 +16,26 @@ function addMatch(state) {
     pawns: Object.fromEntries(Object.keys(state.claims).map(id => [id, { hp: 76, aspect: state.aspects[id], pet: id === mine, moving: false, deadUntil: 0 }])), combats: [] });
 }
 function makeState(scenario) {
+  if (scenario.startsWith("class-")) {
+    const [id, aspect] = scenario.slice(6).split("--");
+    const state = makeState("selected");
+    state.classes = { [mine]: id }; state.slots = lineupSlots(slots, state.classes);
+    state.aspects[mine] = aspectOptions({ classId: id }).includes(aspect) ? aspect : defaultAspect({ classId: id });
+    return state;
+  }
+  if (scenario === "healer-pairs") {
+    const state = makeState("solo-ready");
+    state.classes = { К2: "summoner", К4: "priest", С2: "warden", С4: "priest" };
+    state.slots = lineupSlots(slots, state.classes);
+    for (const id of ["К2", "К4", "С2", "С4"]) state.aspects[id] = "heal";
+    state.active.local = "К2"; state.selections.local = ["К2"]; return state;
+  }
+  if (scenario === "lineup-editor") return makeState("solo-ready");
   const mode = scenario.startsWith("teams") ? "teams" : scenario.startsWith("solo") ? "solo" : "individual";
   const lobby = ["lobby", "selected", "player", "teams-lobby", "teams-ready", "solo-lobby", "solo-ready"].includes(scenario);
   const empty = ["lobby", "teams-lobby", "solo-lobby"].includes(scenario);
   const claims = empty ? {} : mode === "individual" ? picked() : ownerClaims(mode);
-  const state = { rules: "0.8.2", board: "preview", host: scenario === "player" ? "other" : "local", slots, aspects: { ...aspects }, controlMode: mode,
+  const state = { rules: "0.9.0", board: "preview", host: scenario === "player" ? "other" : "local", slots, aspects: { ...aspects }, controlMode: mode,
     active: empty ? {} : { local: mine }, selections: empty ? {} : { local: [mine] }, claims, phase: lobby ? "lobby" : scenario === "finished" ? "finished" : "playing" };
   if (!lobby) addMatch(state);
   if (scenario.includes("preparing")) {
@@ -83,6 +99,12 @@ async function send(command) {
   if (command.type === "release") for (const id of modeOf(current) === "individual" ? [command.id] : ownedIds(current, "local")) delete current.claims[id];
   if (command.type === "select-pawns") { current.active.local = command.id; current.selections.local = command.ids; }
   if (command.type === "set-aspect") current.aspects[command.id] = command.aspect;
+  if (command.type === "set-class" && Object.hasOwn(CLASSES, command.classId)) {
+    current.classes ??= {}; current.classes[command.id] = command.classId;
+    current.slots = lineupSlots(slots, current.classes);
+    const slot = current.slots.find(s => s.id === command.id);
+    if (!aspectOptions(slot).includes(current.aspects[command.id])) current.aspects[command.id] = defaultAspect(slot);
+  }
   if (command.type === "take-host") current.host = "local";
   if (command.type === "combat-click") {
     const fight = current.combats.find(fight => fight.id === command.combat);
@@ -123,6 +145,9 @@ for (const [value, label] of [["teams-capture-contested", "Захват · пе�
   addPreviewOption(value, label);
 }
 for (const [value, label] of [["pet-carrier", "1 с · носитель-лекарь"], ["pet-dd", "1 с · усиленный ДД"], ["teams-pet-aura", "3 с · баф от лекаря своим ДД"]]) addPreviewOption(value, label);
+for (const [id, info] of Object.entries(CLASSES)) for (const aspect of info.aspects) addPreviewOption("class-" + id + "--" + aspect, "Класс: " + info.name + " · " + aspect);
+addPreviewOption("healer-pairs", "Состав: две пары ДД + хил");
+addPreviewOption("lineup-editor", "Настройки: классы всех 12");
 scenario.addEventListener("change", () => {
   const previous = document.querySelector("main"), next = pristinePanel.cloneNode(true); next.style.width = previous.style.width; previous.replaceWith(next);
   current = makeState(scenario.value); panel = createPanel({ connection: "local", name: "Игрок", host: scenario.value !== "player", send }); panel.update(structuredClone(current));

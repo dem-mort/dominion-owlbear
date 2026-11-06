@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Доминион</title>
-<link rel="stylesheet" href="./panel.css?v=0.8.2">
+<link rel="stylesheet" href="./panel.css?v=0.9.0">
 <main class="app">
   <header class="app-header">
     <div><div class="eyebrow">ДОМИНИОН / 6×6</div><h1>Осколок Силы</h1></div>
@@ -24,12 +24,12 @@
       <section id="selection" class="selection-card" aria-labelledby="selection-heading">
         <h2 id="selection-heading"><span class="step">2</span> Твой персонаж</h2>
         <p id="picked" role="status">Нажми на свободную карточку выше.</p>
-        <fieldset id="own-aspect" hidden><legend>Аспект</legend><div id="aspect-options" class="aspect-options" role="group" aria-label="Аспект персонажа"></div><p id="aspect-help" class="fine"></p></fieldset>
+        <fieldset id="own-aspect" hidden><legend>Класс и аспект</legend><label for="class-choice">Класс</label><select id="class-choice" aria-label="Класс персонажа"></select><div id="aspect-options" class="aspect-options" role="group" aria-label="Аспект персонажа"></div><p id="aspect-help" class="fine"></p></fieldset>
         <button type="button" id="release" class="text-button" hidden>Освободить фишку</button>
       </section>
       <details id="host-settings" class="disclosure" hidden>
         <summary>Настройки ведущего</summary>
-        <div id="team-aspects"><h3>Аспекты команд</h3><div id="aspect-lineup"></div></div>
+        <div id="team-aspects"><h3>Классы и аспекты команд</h3><div id="aspect-lineup"></div></div>
         <label for="route">Бег от красного респа до Капли, с</label>
         <input id="route" name="route" type="number" min="2" max="90" step="0.1" inputmode="decimal" placeholder="10 — пробный темп">
         <p class="fine">Укажи игровой замер, если он есть.</p>
@@ -98,5 +98,5 @@
   </section>
   <p id="notice" role="status" class="notice" hidden></p>
 </main>
-<script type="module" src="./panel.mjs?v=0.8.2"></script>
+<script type="module" src="./panel.mjs?v=0.9.0"></script>
 </html>

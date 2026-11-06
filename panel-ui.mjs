@@ -1,9 +1,10 @@
-import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.8.2";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.8.2";
-import { isOlderSnapshot } from "./snapshot-sync.mjs?v=0.8.2";
+import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.9.0";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.9.0";
+import { isOlderSnapshot } from "./snapshot-sync.mjs?v=0.9.0";
+import { CLASSES, classId } from "./classes.mjs?v=0.9.0";
 
-const ASPECT_LABEL = { attack: "Нападение", support: "Поддержка", heal: "Исцеление" };
-const ACTION_LABEL = { attack: "Атаковать", support: "Поддержать", heal: "Лечить" };
+const ASPECT_LABEL = { attack: "Нападение", support: "Поддержка", heal: "Исцеление", defense: "Защита" };
+const ACTION_LABEL = { attack: "Атаковать", support: "Поддержать", heal: "Лечить", defense: "Защищаться" };
 export const timer = seconds => {
   const remaining = Math.ceil(Math.max(0, Number(seconds) || 0));
   return Math.floor(remaining / 60) + ":" + String(remaining % 60).padStart(2, "0");
@@ -58,7 +59,7 @@ export function displayedCombat(state, pawn, mine) {
   return state.combats?.find(fight => fight.members.includes(mine));
 }
 export function controllerCombats(state, connection) {
-  if (state?.phase !== "playing") return [];
+  if (state?.phase !== "playing" || state.recoveryRequired) return [];
   const mine = new Set(ownedIds(state, connection).filter(id => state.pawns?.[id] && !state.pawns[id].deadUntil));
   return (state.combats ?? []).filter(fight => fight.members.some(id => mine.has(id)));
 }
@@ -141,8 +142,17 @@ export function createPanel({ root = document, connection, name, host, send }) {
     select.disabled = waiting || aspectOptions(slot).length === 1;
   }
 
+  function fillClassSelect(select, slot) {
+    select.replaceChildren(...Object.entries(CLASSES).map(([id, info]) => {
+      const option = make("option", "", info.name); option.value = id; return option;
+    }));
+    select.value = classId(slot);
+    select.disabled = waiting;
+  }
+
   function renderLobby(context) {
     const { mine, slot: ownSlot, hostControls, count } = context;
+    const revealSelection = mine !== lastMine && Boolean(ownSlot);
     if (mine !== lastMine) { if (ownSlot) selectTeam(ownSlot.team); lastMine = mine; }
     const mode = modeOf(state), multi = mode !== "individual";
     const lobbyKey = JSON.stringify([state.board, state.slots, state.claims, state.aspects, portraits, mine, hostControls, mode]);
@@ -157,9 +167,12 @@ export function createPanel({ root = document, connection, name, host, send }) {
           button.dataset.id = slot.id;
           const code = slot.name.slice(0, 2), className = slot.name.split(" · ")[1] ?? slot.name;
           const portrait = make("span", "portrait", className.slice(0, 1));
-          if (portraits[slot.id]) {
+          const templates = state.slots.filter(source => (source.baseClassId ?? classId(source)) === classId(slot));
+          const template = templates.find(source => source.id === slot.id) ?? templates.find(source => source.team === slot.team) ?? templates[0];
+          const portraitUrl = portraits[template?.id];
+          if (portraitUrl) {
             const image = make("img");
-            image.src = portraits[slot.id]; image.alt = "";
+            image.src = portraitUrl; image.alt = "";
             image.addEventListener("error", () => portrait.replaceChildren(root.createTextNode(className.slice(0, 1))), { once: true });
             portrait.replaceChildren(image);
           }
@@ -181,6 +194,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
       element("release").hidden = !ownSlot;
       text("picked", ownSlot ? ownSlot.name : "Нажми на свободную карточку выше.");
       if (ownSlot) {
+        fillClassSelect(element("class-choice"), ownSlot);
         const chosen = state.aspects?.[mine] ?? defaultAspect(ownSlot);
         element("aspect-options").replaceChildren(...aspectOptions(ownSlot).map(aspect => {
           const button = make("button", "", ASPECT_LABEL[aspect]);
@@ -197,10 +211,15 @@ export function createPanel({ root = document, connection, name, host, send }) {
         element("aspect-lineup").replaceChildren(...state.slots.map(slot => {
           const row = make("div", "aspect-row");
           const label = make("label", "", slot.name);
+          const classSelect = make("select"); classSelect.id = "class-" + slot.id;
+          classSelect.setAttribute("aria-label", "Класс " + slot.name.slice(0, 2));
+          fillClassSelect(classSelect, slot);
+          classSelect.addEventListener("change", () => void run({ type: "set-class", id: slot.id, classId: classSelect.value }));
           const select = make("select"); select.id = "aspect-" + slot.id; label.htmlFor = select.id;
+          select.setAttribute("aria-label", "Аспект " + slot.name.slice(0, 2));
           fillAspectSelect(select, slot);
           select.addEventListener("change", () => void run({ type: "set-aspect", id: slot.id, aspect: select.value }));
-          row.append(label, select); return row;
+          row.append(label, classSelect, select); return row;
         }));
       }
     }
@@ -208,19 +227,20 @@ export function createPanel({ root = document, connection, name, host, send }) {
     for (const button of root.querySelectorAll("#aspect-options button")) button.disabled = waiting || button.dataset.aspect === (state.aspects?.[mine] ?? (ownSlot && defaultAspect(ownSlot)));
     for (const select of root.querySelectorAll("#aspect-lineup select")) {
       const slot = state.slots.find(slot => "aspect-" + slot.id === select.id);
-      select.disabled = waiting || aspectOptions(slot).length === 1;
+      select.disabled = waiting || select.id.startsWith("aspect-") && aspectOptions(slot).length === 1;
     }
+    element("class-choice").disabled = waiting;
     text("count", count);
     text("lobby-title", multi ? mode === "teams" ? "Выбери команду" : "Тест за всех 12" : "Выбери персонажа");
     element("control-mode").value = mode;
     element("control-mode").disabled = !hostControls || waiting;
-    text("mode-help", hostControls ? "Карта 6×6 · смена режима освобождает фишки" : "Карта 6×6 · режим выбирает ведущий");
+    text("mode-help", hostControls ? "Карта 6×6 · смена режима освобождает фишки" : host ? "При выходе ведущего управление перейдёт автоматически" : "Карта 6×6 · режим выбирает ведущий");
     renderGroupClaim();
     text("release", mode === "teams" ? "Освободить команду" : mode === "solo" ? "Освободить всех 12" : "Освободить фишку");
     element("release").disabled = waiting;
     element("start-form").hidden = !host;
     element("start").disabled = !hostControls || waiting || !canStart(state);
-    element("take-host").hidden = !host || hostControls;
+    element("take-host").hidden = true;
     element("take-host").disabled = waiting;
     element("practice").hidden = !host || multi;
     element("practice").disabled = !hostControls || waiting || count !== 0;
@@ -229,6 +249,10 @@ export function createPanel({ root = document, connection, name, host, send }) {
     const people = new Set(Object.values(state.claims).map(claim => claim.connection)).size;
     const preparation = multi ? canStart(state) ? people + "/" + CONTROL_MODES[mode].controllers + " игроков · 12 персонажей готовы" : mode === "teams" ? "Нужны 2 игрока: по одному на команду" : "Возьми всех 12 персонажей для теста" : count ? count + "/12 игроков готовы · до 1000 очков" : "Для старта нужен хотя бы один персонаж";
     text("start-help", host && !hostControls ? "Управление сейчас в другой вкладке ведущего" : hostControls ? preparation : ownSlot ? "Ты готов · после старта появишься на респе" : multi ? "Выбери команду своей кнопкой" : "Выбери персонажа своей команды");
+    if (revealSelection) {
+      const selection = element("selection"), body = selection.parentElement;
+      if (body) body.scrollTop = Math.max(0, selection.offsetTop - body.offsetTop);
+    }
   }
 
   function renderMultiControls(context) {
@@ -297,7 +321,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
         const box = make("div", "combat-team " + team);
         const title = make("strong", "", TEAM_NAME[team]); title.append(make("b", "", combat.numbers[index]));
         const counts = combat.counts[index];
-        box.append(title, make("small", "", "ДД " + counts.attack + " · САП " + counts.support + " · ХИЛ " + counts.heal));
+        box.append(title, make("small", "", "ДД " + counts.attack + " · САП " + counts.support + " · ХИЛ " + counts.heal + (counts.defense ? " · ТАНК " + counts.defense : "")));
         return box;
       }));
     }
@@ -325,7 +349,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
   }
 
   function render() {
-    const compatible = state?.rules === "0.8.2";
+    const compatible = state?.rules === "0.9.0";
     element("loading").hidden = compatible;
     element("lobby").hidden = !compatible || state.phase !== "lobby";
     element("playing").hidden = !compatible || state.phase === "lobby";
@@ -335,16 +359,16 @@ export function createPanel({ root = document, connection, name, host, send }) {
     }
     const context = panelContext(state, connection, host);
     const { mine, slot, hostControls } = context;
-    text("phase", state.phase === "lobby" ? "Лобби" : state.phase === "preparing" ? "Подготовка" : state.phase === "finished" ? "Итог" : state.practice ? "Тренировка" : "Матч идёт");
+    text("phase", state.recoveryRequired ? "Матч приостановлен" : state.phase === "lobby" ? "Лобби" : state.phase === "preparing" ? "Подготовка" : state.phase === "finished" ? "Итог" : state.practice ? "Тренировка" : "Матч идёт");
     if (state.phase === "lobby") { requestedPoint = null; wasMoving = false; lastSelectionKey = ""; combatPressed.clear(); lastCombat = null; focusedCombatId = null; renderLobby(context); return; }
     lastLobby = "";
-    const finished = state.phase === "finished", preparing = state.phase === "preparing", pawn = state.pawns[mine];
+    const finished = state.phase === "finished", preparing = state.phase === "preparing" && !state.recoveryRequired, pawn = state.pawns[mine];
     const dead = Boolean(pawn?.deadUntil);
     const fights = myFights(), combat = focusedFight(), chosen = selectedIds(state, connection);
     const selectionKey = JSON.stringify([mine, chosen]);
     if (selectionKey !== lastSelectionKey) { requestedPoint = null; wasMoving = false; lastSelectionKey = selectionKey; }
     const mobile = chosen.filter(id => state.pawns[id] && !state.pawns[id].deadUntil);
-    const canMove = state.phase === "playing" && mobile.length > 0;
+    const canMove = state.phase === "playing" && !state.recoveryRequired && mobile.length > 0;
     for (const key of combatPressed) if (!fights.some(fight => key === fight.id + "/" + fight.round)) combatPressed.delete(key);
     renderMultiControls(context); renderFightTabs(fights, combat);
     const role = ASPECTS[pawn?.aspect ?? "attack"];
@@ -369,6 +393,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
     text("control", finished ? "" : preparing ? "Осмотри карту. Движение и бой начнутся после подготовки." : !pawn ? "Наблюдай за точками и счётом" : combat ? "Стычка: " + combat.name + " · действие ниже" : chosen.length > 1 ? "Приказ для " + mobile.length + " живых из " + chosen.length : dead ? "Возрождение через " + Math.max(0, Math.ceil(pawn.deadUntil - state.elapsed)) + " с"
       : pawn.retreating ? "Отступаю к своему респу" : pawn.moving ? requestedPoint ? "Бегу: " + requestedPoint : "Персонаж в пути" : "Выбери точку — персонаж побежит сам");
     if (wasMoving && !pawn?.moving) requestedPoint = null;
+    if (state.recoveryRequired) text("control", "Партия приостановлена. Вернись в лобби, чтобы начать новую.");
     wasMoving = Boolean(pawn?.moving);
     element("health-row").hidden = !pawn; element("health").value = pawn?.hp ?? 0; text("health-label", (pawn?.hp ?? 0) + "/100");
     const activeCombat = state.combats?.find(fight => fight.members.includes(mine));
@@ -403,6 +428,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
     element("practice-opponent").disabled = Boolean(state.practiceOpponent) || waiting || state.phase !== "playing";
     text("practice-opponent", state.practiceOpponent ? "Соперник направлен к Капле" : "Добавить соперника к Капле");
     element("stop").hidden = finished || !hostControls; element("stop-match").disabled = waiting;
+    if (state.recoveryRequired && hostControls) element("stop").open = true;
     element("recovery").hidden = !host || hostControls || !["preparing", "playing", "finished"].includes(state.phase);
     element("recover-lobby").disabled = waiting;
   }
@@ -423,6 +449,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
   });
   element("practice").addEventListener("click", () => void run({ type: "start", practice: true }));
   element("control-mode").addEventListener("change", () => void run({ type: "set-control-mode", mode: element("control-mode").value }));
+  element("class-choice").addEventListener("change", () => { if (own()) void run({ type: "set-class", id: own(), classId: element("class-choice").value }); });
   element("claim-group").addEventListener("click", () => void run({ type: "claim", team: selectedTeam, name }));
   element("active-pawn").addEventListener("change", () => {
     const id = element("active-pawn").value;
@@ -469,6 +496,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
     update(next) {
       if (isOlderSnapshot(next, state)) return;
       const changedBoard = state?.board !== next?.board, enteringPreparation = next?.phase === "preparing" && state?.phase !== "preparing";
+      if (changedBoard || state?.host !== next?.host || state?.epoch !== next?.epoch) combatPressed.clear();
       state = next;
       if (changedBoard) { lastLobby = ""; lastMine = null; selectedTeam = "red"; selectTeam("red"); }
       if (enteringPreparation) element("play-scroll").scrollTop = 0;

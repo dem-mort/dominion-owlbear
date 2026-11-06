@@ -1,5 +1,5 @@
-import { ownedIds } from "./control.mjs?v=0.8.2";
-import { NS } from "./rules.mjs?v=0.8.2";
+import { ownedIds } from "./control.mjs?v=0.9.0";
+import { NS } from "./rules.mjs?v=0.9.0";
 
 export const TARGET_KEY = NS + "/map-target";
 const VIEW_KEY = NS + "/local-view";
@@ -39,7 +39,7 @@ export function hitTarget(target, position) {
 }
 
 export function mapTarget(state, connection) {
-  if (state?.phase !== "playing" || state.controlMode !== "individual" || state.actionSeconds !== 1 ||
+  if (state?.phase !== "playing" || state.recoveryRequired || state.controlMode !== "individual" || state.actionSeconds !== 1 ||
       !Number.isFinite(state.boardScale) || state.boardScale <= 0) return null;
   const owned = ownedIds(state, connection);
   if (owned.length !== 1) return null;

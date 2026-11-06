@@ -1,6 +1,7 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.8.2";
-import { targetViews } from "./targets.mjs?v=0.8.2";
-import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.8.2";
+import { boardPanelViews } from "./board-panel.mjs?v=0.9.0";
+import { targetViews } from "./targets.mjs?v=0.9.0";
+import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.9.0";
+import { CLASSES, classId, classTemplate } from "./classes.mjs?v=0.9.0";
 
 export const HOME_KEY = NS + "/lobby-position";
 export const PAWN_KEY = NS + "/pawn";
@@ -36,8 +37,10 @@ export function visiblePawns(state, items, connection, role) {
       eyes.some(eye => distance(eye.position, source.position) <= radius);
     if (!referee && !soloController && !ally && !nearby) return [];
     const original = originalItem(source);
+    const template = classTemplate(items.map(originalItem), slot);
     const text = structuredClone(original.text);
     let nickname = slot.name.slice(0, 2);
+    if (slot.classId && slot.classId !== (slot.baseClassId ?? classId(original))) nickname += " · " + CLASSES[slot.classId].short;
     if (claim.name && claim.name !== nickname) nickname += " · " + claim.name;
     if (ASPECTS[status.aspect]) nickname += " · " + ASPECTS[status.aspect].short;
     if (!status.deadUntil && Number.isFinite(status.hp) && status.hp < 100) nickname += " · " + status.hp + "%";
@@ -49,6 +52,7 @@ export function visiblePawns(state, items, connection, role) {
     }
     const item = {
       ...original,
+      image: template?.image ?? { url: new URL("./blank.svg", import.meta.url).href, mime: "image/svg+xml", width: 140, height: 140 },
       position: { ...source.position },
       visible: true,
       locked: true,
@@ -58,6 +62,26 @@ export function visiblePawns(state, items, connection, role) {
     };
     delete item.attachedTo;
     return [{ source: source.id, item }];
+  });
+}
+
+function classBadgeViews(state, items, visible, Command) {
+  if (!Command || !state) return [];
+  const visibleIds = new Set(visible.map(view => view.source));
+  const known = new Set(items.filter(item => item.layer === "CHARACTER").map(item => classId(originalItem(item))));
+  return state.slots.filter(slot => !known.has(classId(slot)) && (state.phase === "lobby" || visibleIds.has(slot.id))).flatMap(slot => {
+    const source = items.find(item => item.id === slot.id);
+    if (!source) return [];
+    const { MOVE: M, LINE: L, CUBIC: C, CLOSE: Z } = Command, r = 14, k = r * .55228475;
+    const scale = state.boardScale ?? 1, key = VIEW_KEY + "/class/" + slot.id;
+    return [{ source: key, item: { id: slot.id, type: "PATH", createdUserId: source.createdUserId ?? "unknown",
+      name: CLASSES[classId(slot)].name, layer: "NOTE", position: { ...source.position }, rotation: 0,
+      scale: { x: scale, y: scale }, zIndex: 100, visible: true, locked: true, disableHit: true,
+      commands: [[M, 0, -r], [C, k, -r, r, -k, r, 0], [C, r, k, k, r, 0, r],
+        [C, -k, r, -r, k, -r, 0], [C, -r, -k, -k, -r, 0, -r], [Z],
+        [M, 0, -8], [L, 7, 0], [L, 0, 8], [L, -7, 0], [Z]], fillRule: "nonzero",
+      style: { fillColor: "#172a36", fillOpacity: 1, strokeColor: slot.team === "red" ? "#ffb0aa" : "#9adeff",
+        strokeOpacity: 1, strokeWidth: 2, strokeDash: [] }, metadata: { [VIEW_KEY]: key } } }];
   });
 }
 
@@ -90,8 +114,9 @@ export function createLocalVision(OBR, connection, role, onError, Command) {
           cleanup = false;
         }
 
-        const desired = new Map(visiblePawns(snapshot.state, snapshot.items, connection, role)
-          .map(view => [view.source, view.item]));
+        const visible = visiblePawns(snapshot.state, snapshot.items, connection, role);
+        const desired = new Map(visible.map(view => [view.source, view.item]));
+        for (const view of classBadgeViews(snapshot.state, snapshot.items, visible, Command)) desired.set(view.source, view.item);
         for (const view of boardPanelViews(snapshot.state, snapshot.items, Command)) desired.set(view.source, view.item);
         for (const view of targetViews(snapshot.state, snapshot.items, connection, Command)) desired.set(view.source, view.item);
         const removed = [...views.keys()].filter(id => !desired.has(id));

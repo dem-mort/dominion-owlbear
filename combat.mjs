@@ -1,3 +1,5 @@
+import { aspectOptions, defaultAspect } from "./classes.mjs?v=0.9.0";
+export { aspectOptions, defaultAspect } from "./classes.mjs?v=0.9.0";
 export const STEP_SECONDS = 3;
 export const COMBAT_STEPS = 5;
 export const MAX_HP = 100;
@@ -6,11 +8,7 @@ export const ASPECTS = {
   attack: { name: "Аспект Нападения", short: "ДД", help: "Наносит основной урон", damage: 22, power: 1 },
   support: { name: "Аспект Поддержки", short: "САП", help: "Усиливает активных ДД рядом", damage: 8, power: 0.75 },
   heal: { name: "Аспект Исцеления", short: "ХИЛ", help: "Лечит раненых союзников", damage: 4, power: 0.8 },
-};
-const CLASS_ASPECTS = {
-  Воин: ["attack"], Храмовник: ["attack"], Разведчик: ["attack"],
-  Жрец: ["attack", "support", "heal"], Маг: ["attack", "support"],
-  Волшебник: ["attack", "support"], Бард: ["attack", "support"],
+  defense: { name: "Аспект Защиты", short: "ТАНК", help: "Получает на 35% меньше урона", damage: 12, power: 0.85 },
 };
 const near = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const allAreas = match => [...match.points, ...match.pets];
@@ -22,14 +20,6 @@ function targetIndex(count, die) {
   // Uniform for every party size. Bound retries for deterministic test dice.
   for (let attempt = 0; roll > limit && attempt < 12; attempt++) roll = die();
   return (roll - 1) % count;
-}
-
-export function aspectOptions(slot) {
-  return CLASS_ASPECTS[slot.name.split(" · ")[1]] ?? ["attack"];
-}
-
-export function defaultAspect(slot) {
-  return slot.name.endsWith(" · Жрец") ? "heal" : slot.name.endsWith(" · Бард") ? "support" : "attack";
 }
 
 export function actionSeconds(match) {
@@ -175,8 +165,8 @@ export function combatTick(match, area, sides, kind, die) {
     if (!enemies.length) continue;
     const result = results.find(result => result.id === pawn.id);
     result.pet = pawn.aspect === "attack" && Boolean(sources[pawn.team]);
-    const damage = ASPECTS[pawn.aspect].damage * effectScale * factor(die) * (result.pet ? PET_DAMAGE_MULTIPLIER : 1) * (pawn.aspect === "attack" ? 1 + support[pawn.team] : 1);
     const target = enemies[targetIndex(enemies.length, die)];
+    const damage = ASPECTS[pawn.aspect].damage * effectScale * factor(die) * (result.pet ? PET_DAMAGE_MULTIPLIER : 1) * (pawn.aspect === "attack" ? 1 + support[pawn.team] : 1) * (target.aspect === "defense" ? 0.65 : 1);
     incoming[target.id] += damage;
     result.damage = Math.round(damage);
     if (pawn.aspect === "support" && active.some(other => other.team === pawn.team && other.aspect === "attack")) result.boost = Math.round(support[pawn.team] * 100);

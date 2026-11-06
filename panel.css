@@ -46,6 +46,10 @@ button:focus-visible { z-index: 1; position: relative; }
 fieldset { border: 0; padding: 0; margin: 9px 0 0; min-width: 0; }
 legend { padding: 0; color: var(--muted); font-size: 10px; margin-bottom: 5px; }
 .aspect-options { display: flex; gap: 5px; flex-wrap: wrap; }
+#class-choice { width: 100%; margin: 4px 0 8px; }
+#aspect-lineup .aspect-row { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 9px; }
+#aspect-lineup .aspect-row label { grid-column: 1 / -1; }
+#aspect-lineup .aspect-row select { width: 100%; min-width: 0; }
 .aspect-options button { flex: 1; min-height: 32px; font-size: 11px; padding: 5px; }
 .aspect-options button[aria-pressed="true"] { background: #274858; border-color: var(--blue); color: var(--blue); }
 .aspect-options button:disabled { opacity: .6; }.aspect-options button[aria-pressed="true"]:disabled { opacity: 1; }
