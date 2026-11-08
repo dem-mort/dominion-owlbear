@@ -1,10 +1,10 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.11.2";
-import { targetViews } from "./targets.mjs?v=0.11.2";
-import { distance, NS, POINT_NAMES } from "./rules.mjs?v=0.11.2";
-import { CLASSES, classId } from "./classes.mjs?v=0.11.2";
-import { pawnStyle } from "./pawn-style.mjs?v=0.11.2";
-import { planViews } from "./planning.mjs?v=0.11.2";
-import { selectedIds } from "./control.mjs?v=0.11.2";
+import { boardPanelViews } from "./board-panel.mjs?v=0.11.3";
+import { targetViews } from "./targets.mjs?v=0.11.3";
+import { distance, NS, POINT_NAMES } from "./rules.mjs?v=0.11.3";
+import { CLASSES, classId } from "./classes.mjs?v=0.11.3";
+import { pawnStyle, PAWN_DIAMETER } from "./pawn-style.mjs?v=0.11.3";
+import { planViews } from "./planning.mjs?v=0.11.3";
+import { selectedIds } from "./control.mjs?v=0.11.3";
 
 export const HOME_KEY = NS + "/lobby-position";
 export const PAWN_KEY = NS + "/pawn";
@@ -64,7 +64,7 @@ function signature(item) {
 
 export function selectionViews(state, items, connection, Command) {
   if (!Command || !["preparing", "playing"].includes(state?.phase) || state.recoveryRequired) return [];
-  const { MOVE: M, CUBIC: C, CLOSE: Z } = Command, scale = state.boardScale ?? 1, r = 13 * scale, k = r * .55228475;
+  const { MOVE: M, CUBIC: C, CLOSE: Z } = Command, scale = state.boardScale ?? 1, r = (PAWN_DIAMETER / 2 + 3) * scale, k = r * .55228475;
   return selectedIds(state, connection).flatMap(id => {
     const source = items.find(item => item.id === id);
     if (!source?.position || ![source.position.x, source.position.y].every(Number.isFinite)) return [];

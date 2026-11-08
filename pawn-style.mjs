@@ -1,6 +1,6 @@
-import { classId } from "./classes.mjs?v=0.11.2";
+import { classId } from "./classes.mjs?v=0.11.3";
 
-export const PAWN_DIAMETER = 20;
+export const PAWN_DIAMETER = 26;
 // Owlbear image coordinates use 150 scene units per grid square. Explicit image
 // dimensions and centering avoid inheriting the previous class's token geometry.
 export function pawnStyle(slot, boardScale = 1) {
