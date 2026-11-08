@@ -1,12 +1,13 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.11.1";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.11.1";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.1";
-import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.11.1";
-import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.1";
-import { CLASSES, classId, lineupSlots, classTemplate } from "./classes.mjs?v=0.11.1";
-import { createAuthority } from "./authority.mjs?v=0.11.1";
-import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.11.1";
-import { validSquads } from "./squads.mjs?v=0.11.1";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.11.2";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.11.2";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.2";
+import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.11.2";
+import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.2";
+import { CLASSES, classId, lineupSlots } from "./classes.mjs?v=0.11.2";
+import { pawnStyle } from "./pawn-style.mjs?v=0.11.2";
+import { createAuthority } from "./authority.mjs?v=0.11.2";
+import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.11.2";
+import { validSquads } from "./squads.mjs?v=0.11.2";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -131,27 +132,23 @@ export async function initialize(OBR, Command) {
     squads = Object.fromEntries(["red", "blue"].filter(team => validSquads(lineup(), team, snapshot.squads?.[team])).map(team => [team, plainCopy(snapshot.squads[team])]));
   }
   function lobbyLabel(slot) {
-    const selected = lineup().find(s => s.id === slot.id) ?? slot;
-    const code = selected.name.slice(0, 2), name = claims[slot.id]?.name;
-    if (classId(selected) === classId(slot)) return controlMode === "individual" ? name || code : code + (name ? " · " + name : "");
-    return code + " · " + CLASSES[classId(selected)].short + (name ? " · " + name : "");
+    return "";
   }
   async function syncLobbyLabels() {
     if (!sceneReady || !board || match || legacySnapshot || state?.host !== connection) return;
     const labels = new Map(board.slots.map(slot => [slot.id, lobbyLabel(slot)]));
-    const images = new Map(lineup().map(slot => {
-      const template = classTemplate(sceneItems.map(originalItem), slot);
-      return [slot.id, template?.image ?? { url: blankImage, mime: "image/svg+xml", width: 140, height: 140 }];
-    }));
-    const changed = sceneItems.filter(item => labels.has(item.id) && (item.text?.type === "PLAIN" && item.text.plainText !== labels.get(item.id) || JSON.stringify(item.image) !== JSON.stringify(images.get(item.id))));
+    const styles = new Map(lineup().map(slot => [slot.id, pawnStyle(slot, board.scale)]));
+    const changed = sceneItems.filter(item => labels.has(item.id) &&
+      (item.text?.plainText || JSON.stringify([item.image, item.grid, item.scale]) !== JSON.stringify(Object.values(styles.get(item.id)))));
     if (!changed.length) return;
     await OBR.scene.items.updateItems(changed, items => {
-      for (const item of items) label(item, labels.get(item.id));
-      for (const item of items) if (JSON.stringify(item.image) !== JSON.stringify(images.get(item.id))) {
+      for (const item of items) {
         item.metadata ??= {};
         item.metadata[homeKey] ??= { position: { ...item.position }, locked: item.locked,
-          visible: item.visible, image: plainCopy(item.image), text: plainCopy(item.text) };
-        item.image = plainCopy(images.get(item.id));
+          visible: item.visible, image: plainCopy(item.image), text: plainCopy(item.text),
+          grid: plainCopy(item.grid), scale: plainCopy(item.scale) };
+        Object.assign(item, plainCopy(styles.get(item.id)));
+        label(item, "");
       }
     });
   }
@@ -197,7 +194,7 @@ export async function initialize(OBR, Command) {
     normalizeSelection();
     const snapshot = {
       ...(legacySnapshot ?? {}),
-      rules: "0.11.1",
+      rules: "0.11.2",
       board: board.key, host: connection,
       epoch: (state?.board === board.key ? epochOf(state) : 0) + (acquire ? 1 : 0),
       revision: !acquire && state?.board === board.key && Number.isSafeInteger(state.revision) ? state.revision + 1 : 1,
@@ -393,8 +390,8 @@ export async function initialize(OBR, Command) {
           item.position = { ...slot.position };
           item.visible = true;
           item.locked = slot.locked;
-          if (original.image) item.image = plainCopy(original.image);
           if (original.text) item.text = plainCopy(original.text);
+          Object.assign(item, pawnStyle(lineup().find(s => s.id === item.id) ?? slot, board.scale));
           if (item.metadata?.[homeKey]) delete item.metadata[homeKey];
           if (item.metadata?.[PAWN_KEY]) delete item.metadata[PAWN_KEY];
           label(item, lobbyLabel(slot));

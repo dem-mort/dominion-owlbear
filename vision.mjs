@@ -1,9 +1,10 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.11.1";
-import { targetViews } from "./targets.mjs?v=0.11.1";
-import { distance, NS, POINT_NAMES, ASPECTS } from "./rules.mjs?v=0.11.1";
-import { CLASSES, classId, classTemplate } from "./classes.mjs?v=0.11.1";
-import { planViews } from "./planning.mjs?v=0.11.1";
-import { selectedIds } from "./control.mjs?v=0.11.1";
+import { boardPanelViews } from "./board-panel.mjs?v=0.11.2";
+import { targetViews } from "./targets.mjs?v=0.11.2";
+import { distance, NS, POINT_NAMES } from "./rules.mjs?v=0.11.2";
+import { CLASSES, classId } from "./classes.mjs?v=0.11.2";
+import { pawnStyle } from "./pawn-style.mjs?v=0.11.2";
+import { planViews } from "./planning.mjs?v=0.11.2";
+import { selectedIds } from "./control.mjs?v=0.11.2";
 
 export const HOME_KEY = NS + "/lobby-position";
 export const PAWN_KEY = NS + "/pawn";
@@ -39,23 +40,12 @@ export function visiblePawns(state, items, connection, role) {
       eyes.some(eye => distance(eye.position, source.position) <= radius);
     if (!referee && !soloController && !ally && !nearby) return [];
     const original = originalItem(source);
-    const template = classTemplate(items.map(originalItem), slot);
-    const text = structuredClone(original.text);
-    let nickname = slot.name.slice(0, 2);
-    if (slot.classId && slot.classId !== (slot.baseClassId ?? classId(original))) nickname += " · " + CLASSES[slot.classId].short;
-    if (claim.name && claim.name !== nickname) nickname += " · " + claim.name;
-    if (ASPECTS[status.aspect]) nickname += " · " + ASPECTS[status.aspect].short;
-    if (!status.deadUntil && Number.isFinite(status.hp) && status.hp < 100) nickname += " · " + status.hp + "%";
-    if (status.deadUntil) nickname += " · " + Math.max(0, Math.ceil(status.deadUntil - state.elapsed)) + " с";
-    if (status.pet) nickname += " · баф";
-    if (state.pawns?.[slot.id]?.atSpawn || status.deadUntil) nickname = slot.name.slice(0, 2);
-    if (text?.type === "PLAIN") {
-      text.plainText = nickname;
-      text.richText = [{ type: "paragraph", children: [{ text: nickname }] }];
-    }
+    const text = { ...structuredClone(original.text ?? {}), type: "PLAIN", plainText: "",
+      richText: [{ type: "paragraph", children: [{ text: "" }] }] };
     const item = {
       ...original,
-      image: template?.image ?? { url: new URL("./blank.svg", import.meta.url).href, mime: "image/svg+xml", width: 140, height: 140 },
+      ...pawnStyle(slot, state.boardScale),
+      name: CLASSES[classId(slot)].name,
       position: { ...source.position },
       visible: true,
       locked: true,
@@ -68,33 +58,13 @@ export function visiblePawns(state, items, connection, role) {
   });
 }
 
-function classBadgeViews(state, items, visible, Command) {
-  if (!Command || !state) return [];
-  const visibleIds = new Set(visible.map(view => view.source));
-  const known = new Set(items.filter(item => item.layer === "CHARACTER").map(item => classId(originalItem(item))));
-  return state.slots.filter(slot => !known.has(classId(slot)) && (state.phase === "lobby" || visibleIds.has(slot.id))).flatMap(slot => {
-    const source = items.find(item => item.id === slot.id);
-    if (!source) return [];
-    const { MOVE: M, LINE: L, CUBIC: C, CLOSE: Z } = Command, r = 14, k = r * .55228475;
-    const scale = state.boardScale ?? 1, key = VIEW_KEY + "/class/" + slot.id;
-    return [{ source: key, item: { id: slot.id, type: "PATH", createdUserId: source.createdUserId ?? "unknown",
-      name: CLASSES[classId(slot)].name, layer: "NOTE", position: { ...source.position }, rotation: 0,
-      scale: { x: scale, y: scale }, zIndex: 100, visible: true, locked: true, disableHit: true,
-      commands: [[M, 0, -r], [C, k, -r, r, -k, r, 0], [C, r, k, k, r, 0, r],
-        [C, -k, r, -r, k, -r, 0], [C, -r, -k, -k, -r, 0, -r], [Z],
-        [M, 0, -8], [L, 7, 0], [L, 0, 8], [L, -7, 0], [Z]], fillRule: "nonzero",
-      style: { fillColor: "#172a36", fillOpacity: 1, strokeColor: slot.team === "red" ? "#ffb0aa" : "#9adeff",
-        strokeOpacity: 1, strokeWidth: 2, strokeDash: [] }, metadata: { [VIEW_KEY]: key } } }];
-  });
-}
-
 function signature(item) {
   return JSON.stringify([item.position, item.rotation, item.scale, item.image, item.grid, item.text, item.name, item.commands, item.style, item.metadata]);
 }
 
 export function selectionViews(state, items, connection, Command) {
   if (!Command || !["preparing", "playing"].includes(state?.phase) || state.recoveryRequired) return [];
-  const { MOVE: M, CUBIC: C, CLOSE: Z } = Command, scale = state.boardScale ?? 1, r = 22 * scale, k = r * .55228475;
+  const { MOVE: M, CUBIC: C, CLOSE: Z } = Command, scale = state.boardScale ?? 1, r = 13 * scale, k = r * .55228475;
   return selectedIds(state, connection).flatMap(id => {
     const source = items.find(item => item.id === id);
     if (!source?.position || ![source.position.x, source.position.y].every(Number.isFinite)) return [];
@@ -102,7 +72,7 @@ export function selectionViews(state, items, connection, Command) {
     return [{ source: key, item: { id, createdUserId: source.createdUserId ?? "unknown", type: "PATH", name: "Выбран · " + state.slots.find(s => s.id === id).name,
       layer: "NOTE", zIndex: 9000, visible: true, locked: true, disableHit: true, position: { ...source.position }, rotation: 0, scale: { x: 1, y: 1 },
       fillRule: "nonzero", commands: [[M, 0, -r], [C, k, -r, r, -k, r, 0], [C, r, k, k, r, 0, r], [C, -k, r, -r, k, -r, 0], [C, -r, -k, -k, -r, 0, -r], [Z]],
-      style: { fillColor: "#000000", fillOpacity: 0, strokeColor: "#b5ffe1", strokeOpacity: 1, strokeWidth: 2.5 * scale, strokeDash: [5 * scale, 3 * scale] }, metadata: { [VIEW_KEY]: key } } }];
+      style: { fillColor: "#000000", fillOpacity: 0, strokeColor: "#b5ffe1", strokeOpacity: 1, strokeWidth: 1.5 * scale, strokeDash: [3 * scale, 2 * scale] }, metadata: { [VIEW_KEY]: key } } }];
   });
 }
 
@@ -133,7 +103,6 @@ export function createLocalVision(OBR, connection, role, onError, Command) {
 
         const visible = visiblePawns(snapshot.state, snapshot.items, connection, role);
         const desired = new Map(visible.map(view => [view.source, view.item]));
-        for (const view of classBadgeViews(snapshot.state, snapshot.items, visible, Command)) desired.set(view.source, view.item);
         for (const view of boardPanelViews(snapshot.state, snapshot.items, Command, connection, role)) desired.set(view.source, view.item);
         for (const view of planViews(snapshot.state, snapshot.items, connection, role, Command)) desired.set(view.source, view.item);
         for (const view of selectionViews(snapshot.state, snapshot.items, connection, Command)) desired.set(view.source, view.item);
