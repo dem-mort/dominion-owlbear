@@ -1,9 +1,11 @@
 const GOLD = "#d9c9a5", DARK = "#172a36", RED = "#ffb0aa", BLUE = "#9adeff";
+export function petMapLabel(pet, remaining) {
+  const status = pet.available ? "ГОТОВ" : Number.isFinite(remaining) ? Math.max(0, Math.ceil(remaining)) + " с" : "ЖДЁТ";
+  return pet.name + " - " + status;
+}
 export function mapFields() {
   const labels = [
-    ["trefoil", "Трефа", 500, 168, 62, 25, GOLD], ["drop", "Капля", 493, 370, 60, 25, GOLD], ["star", "Звезда", 671, 321, 64, 25, GOLD],
     ["spawn-red", "РЕСП КРАСНЫХ", 247, 467, 125, 25, RED], ["spawn-blue", "РЕСП СИНИХ", 506, 685, 107, 25, BLUE],
-    ["pet-1", "Б1", 394, 283, 28, 25, "#ffd296"], ["pet-2", "Б2", 417, 493, 28, 25, "#ffd296"], ["pet-3", "Б3", 618, 481, 28, 25, "#ffd296"],
     ["team-red", "КРАСНЫЕ", 62, 307, 170, 25, RED], ["team-blue", "СИНИЕ", 686, 702, 170, 25, BLUE],
   ];
   return labels.map(([id, text, x, y, width, height, color]) => ({ id: "map-" + id, text, x, y, width, height, color,

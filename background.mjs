@@ -1,13 +1,14 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.11.3";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.11.3";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.3";
-import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.11.3";
-import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.3";
-import { CLASSES, classId, lineupSlots } from "./classes.mjs?v=0.11.3";
-import { pawnStyle } from "./pawn-style.mjs?v=0.11.3";
-import { createAuthority } from "./authority.mjs?v=0.11.3";
-import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.11.3";
-import { validSquads } from "./squads.mjs?v=0.11.3";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.11.4";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.11.4";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.4";
+import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.11.4";
+import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.4";
+import { CLASSES, classId, lineupSlots } from "./classes.mjs?v=0.11.4";
+import { pawnStyle } from "./pawn-style.mjs?v=0.11.4";
+import { petMapLabel } from "./map-overlay.mjs?v=0.11.4";
+import { createAuthority } from "./authority.mjs?v=0.11.4";
+import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.11.4";
+import { validSquads } from "./squads.mjs?v=0.11.4";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -136,19 +137,26 @@ export async function initialize(OBR, Command) {
   }
   async function syncLobbyLabels() {
     if (!sceneReady || !board || match || legacySnapshot || state?.host !== connection) return;
-    const labels = new Map(board.slots.map(slot => [slot.id, lobbyLabel(slot)]));
+    const labels = new Map([
+      ...board.slots.map(slot => [slot.id, lobbyLabel(slot)]),
+      ...board.points.map(point => [point.id, ""]),
+      ...board.pets.map(pet => [pet.id, petMapLabel(pet)]),
+    ]);
     const styles = new Map(lineup().map(slot => [slot.id, pawnStyle(slot, board.scale)]));
     const changed = sceneItems.filter(item => labels.has(item.id) &&
-      (item.text?.plainText || JSON.stringify([item.image, item.grid, item.scale]) !== JSON.stringify(Object.values(styles.get(item.id)))));
+      (item.text?.type === "PLAIN" && item.text.plainText !== labels.get(item.id) ||
+       styles.has(item.id) && JSON.stringify([item.image, item.grid, item.scale]) !== JSON.stringify(Object.values(styles.get(item.id)))));
     if (!changed.length) return;
     await OBR.scene.items.updateItems(changed, items => {
       for (const item of items) {
-        item.metadata ??= {};
-        item.metadata[homeKey] ??= { position: { ...item.position }, locked: item.locked,
-          visible: item.visible, image: plainCopy(item.image), text: plainCopy(item.text),
-          grid: plainCopy(item.grid), scale: plainCopy(item.scale) };
-        Object.assign(item, plainCopy(styles.get(item.id)));
-        label(item, "");
+        if (styles.has(item.id)) {
+          item.metadata ??= {};
+          item.metadata[homeKey] ??= { position: { ...item.position }, locked: item.locked,
+            visible: item.visible, image: plainCopy(item.image), text: plainCopy(item.text),
+            grid: plainCopy(item.grid), scale: plainCopy(item.scale) };
+          Object.assign(item, plainCopy(styles.get(item.id)));
+        }
+        label(item, labels.get(item.id));
       }
     });
   }
@@ -194,7 +202,7 @@ export async function initialize(OBR, Command) {
     normalizeSelection();
     const snapshot = {
       ...(legacySnapshot ?? {}),
-      rules: "0.11.3",
+      rules: "0.11.4",
       board: board.key, host: connection,
       epoch: (state?.board === board.key ? epochOf(state) : 0) + (acquire ? 1 : 0),
       revision: !acquire && state?.board === board.key && Number.isSafeInteger(state.revision) ? state.revision + 1 : 1,
@@ -262,10 +270,10 @@ export async function initialize(OBR, Command) {
         pawn: { pet: pawn.pet, deadUntil: pawn.deadUntil, hp: Math.round(pawn.hp), aspect: pawn.aspect },
       });
     }
-    for (const point of match.points) desired.set(point.id, { text: point.team ? TEAM_NAME[point.team] : "" });
+    for (const point of match.points) desired.set(point.id, { text: "" });
     for (const pet of match.pets) {
       const remaining = Math.max(0, Math.ceil(match.nextWave - match.elapsed));
-      desired.set(pet.id, { text: pet.available ? "ГОТОВ" : remaining + " с" });
+      desired.set(pet.id, { text: petMapLabel(pet, remaining) });
     }
     for (const id of board.scores) {
       desired.set(id, { text: "" });
@@ -381,7 +389,7 @@ export async function initialize(OBR, Command) {
     if (match?.practice) { claims = {}; active = {}; selections = {}; }
     const slots = new Map(board.slots.map(slot => [slot.id, slot]));
     const points = new Set(board.points.map(point => point.id));
-    const pets = new Set(board.pets.map(pet => pet.id));
+    const pets = new Map(board.pets.map(pet => [pet.id, pet]));
     await OBR.scene.items.updateItems([...slots.keys(), ...points, ...pets, ...board.scores], items => {
       for (const item of items) {
         const slot = slots.get(item.id);
@@ -396,7 +404,7 @@ export async function initialize(OBR, Command) {
           if (item.metadata?.[PAWN_KEY]) delete item.metadata[PAWN_KEY];
           label(item, lobbyLabel(slot));
         } else {
-          label(item, pets.has(item.id) ? "КД" : "");
+          label(item, pets.has(item.id) ? petMapLabel(pets.get(item.id)) : "");
         }
       }
     });

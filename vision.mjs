@@ -1,10 +1,10 @@
-import { boardPanelViews } from "./board-panel.mjs?v=0.11.3";
-import { targetViews } from "./targets.mjs?v=0.11.3";
-import { distance, NS, POINT_NAMES } from "./rules.mjs?v=0.11.3";
-import { CLASSES, classId } from "./classes.mjs?v=0.11.3";
-import { pawnStyle, PAWN_DIAMETER } from "./pawn-style.mjs?v=0.11.3";
-import { planViews } from "./planning.mjs?v=0.11.3";
-import { selectedIds } from "./control.mjs?v=0.11.3";
+import { boardPanelViews } from "./board-panel.mjs?v=0.11.4";
+import { targetViews } from "./targets.mjs?v=0.11.4";
+import { distance, NS, POINT_NAMES } from "./rules.mjs?v=0.11.4";
+import { CLASSES, classId } from "./classes.mjs?v=0.11.4";
+import { pawnStyle, PAWN_DIAMETER } from "./pawn-style.mjs?v=0.11.4";
+import { planViews } from "./planning.mjs?v=0.11.4";
+import { selectedIds } from "./control.mjs?v=0.11.4";
 
 export const HOME_KEY = NS + "/lobby-position";
 export const PAWN_KEY = NS + "/pawn";

@@ -1,11 +1,12 @@
-import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.11.3";
-import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.11.3";
-import { modeOf } from "./control.mjs?v=0.11.3";
-import { captureStatus } from "./rules.mjs?v=0.11.3";
-import { respawnFields } from "./roster.mjs?v=0.11.3";
+import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.11.4";
+import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.11.4";
+import { modeOf } from "./control.mjs?v=0.11.4";
+import { captureStatus } from "./rules.mjs?v=0.11.4";
+import { respawnFields } from "./roster.mjs?v=0.11.4";
 const PANEL_KEY = "ru.allods.dominion/help-view";
-const guideUrl = new URL("./guide.svg?v=0.11.3", import.meta.url).href;
+const guideUrl = new URL("./guide.svg?v=0.11.4", import.meta.url).href;
 const blankUrl = new URL("./blank.svg", import.meta.url).href;
+const mapLabelCoverUrl = new URL("./map-label-cover.svg?v=0.11.4", import.meta.url).href;
 const COLORS = { text: "#e8f0f5", muted: "#a8bac8", red: "#ffb0aa", blue: "#9adeff", amber: "#ffd296", green: "#a7e2c4" };
 // Owlbear validates every TextStyle field, including text hidden on an image.
 const TEXT_STYLE = {
@@ -94,7 +95,15 @@ export function boardPanelViews(state, items, Command, connection, role) {
       width: map.image.width, height: map.image.height, style: { ...TEXT_STYLE, fillOpacity: 0 } },
   };
   delete background.attachedTo;
-  const result = [{ source: PANEL_KEY, item: background }];
+  const mapCover = { ...map, name: "Доминион · Чистые обозначения карты", layer: "MAP",
+    zIndex: (map.zIndex ?? 0) + 1, visible: true, locked: true, disableHit: true,
+    textItemType: "TEXT",
+    image: { ...map.image, url: mapLabelCoverUrl, mime: "image/svg+xml" },
+    text: { type: "PLAIN", plainText: "", richText: [], width: map.image.width,
+      height: map.image.height, style: { ...TEXT_STYLE, fillOpacity: 0 } },
+    metadata: { [PANEL_KEY]: "map-label-cover" } };
+  delete mapCover.attachedTo;
+  const result = [{ source: PANEL_KEY, item: background }, { source: PANEL_KEY + "/map-label-cover", item: mapCover }];
   const angle = (map.rotation ?? 0) * Math.PI / 180;
   const scale = map.scale ?? { x: 1, y: 1 };
   const offset = map.grid?.offset ?? { x: 0, y: 0 };
