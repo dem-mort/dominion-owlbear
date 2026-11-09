@@ -1,5 +1,5 @@
-import { aspectOptions, defaultAspect } from "./classes.mjs?v=0.11.4";
-export { aspectOptions, defaultAspect } from "./classes.mjs?v=0.11.4";
+import { aspectOptions, defaultAspect } from "./classes.mjs?v=0.11.5";
+export { aspectOptions, defaultAspect } from "./classes.mjs?v=0.11.5";
 export const STEP_SECONDS = 3;
 export const COMBAT_STEPS = 5;
 export const MAX_HP = 100;

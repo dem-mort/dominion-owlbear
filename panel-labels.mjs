@@ -2,7 +2,7 @@
 export const STATIC_FIELDS = [
   {
     "id": "static-0",
-    "text": "ДОМИНИОН / 6×6 · v0.11.4",
+    "text": "ДОМИНИОН / 6×6 · v0.11.5",
     "x": 1076.0,
     "y": 33.23,
     "width": 278,

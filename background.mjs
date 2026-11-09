@@ -1,14 +1,14 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.11.4";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.11.4";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.4";
-import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.11.4";
-import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.4";
-import { CLASSES, classId, lineupSlots } from "./classes.mjs?v=0.11.4";
-import { pawnStyle } from "./pawn-style.mjs?v=0.11.4";
-import { petMapLabel } from "./map-overlay.mjs?v=0.11.4";
-import { createAuthority } from "./authority.mjs?v=0.11.4";
-import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.11.4";
-import { validSquads } from "./squads.mjs?v=0.11.4";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.11.5";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.11.5";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.5";
+import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.11.5";
+import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.5";
+import { CLASSES, classId, lineupSlots } from "./classes.mjs?v=0.11.5";
+import { pawnStyle } from "./pawn-style.mjs?v=0.11.5";
+import { petMapLabel } from "./map-overlay.mjs?v=0.11.5";
+import { createAuthority } from "./authority.mjs?v=0.11.5";
+import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.11.5";
+import { validSquads } from "./squads.mjs?v=0.11.5";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -202,7 +202,7 @@ export async function initialize(OBR, Command) {
     normalizeSelection();
     const snapshot = {
       ...(legacySnapshot ?? {}),
-      rules: "0.11.4",
+      rules: "0.11.5",
       board: board.key, host: connection,
       epoch: (state?.board === board.key ? epochOf(state) : 0) + (acquire ? 1 : 0),
       revision: !acquire && state?.board === board.key && Number.isSafeInteger(state.revision) ? state.revision + 1 : 1,
@@ -390,7 +390,7 @@ export async function initialize(OBR, Command) {
     const slots = new Map(board.slots.map(slot => [slot.id, slot]));
     const points = new Set(board.points.map(point => point.id));
     const pets = new Map(board.pets.map(pet => [pet.id, pet]));
-    await OBR.scene.items.updateItems([...slots.keys(), ...points, ...pets, ...board.scores], items => {
+    await OBR.scene.items.updateItems([...slots.keys(), ...points, ...pets.keys(), ...board.scores], items => {
       for (const item of items) {
         const slot = slots.get(item.id);
         if (slot) {
