@@ -1,5 +1,5 @@
-import { ownedIds, selectedIds } from "./control.mjs?v=0.11.5";
-import { defaultAspect, ASPECTS } from "./combat.mjs?v=0.11.5";
+import { ownedIds, selectedIds } from "./control.mjs?v=0.11.6";
+import { defaultAspect, ASPECTS } from "./combat.mjs?v=0.11.6";
 
 export function validSquads(slots, team, groups) {
   const ids = slots.filter(s => s.team === team).map(s => s.id);

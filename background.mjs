@@ -1,14 +1,14 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.11.5";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.11.5";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.5";
-import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.11.5";
-import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.5";
-import { CLASSES, classId, lineupSlots } from "./classes.mjs?v=0.11.5";
-import { pawnStyle } from "./pawn-style.mjs?v=0.11.5";
-import { petMapLabel } from "./map-overlay.mjs?v=0.11.5";
-import { createAuthority } from "./authority.mjs?v=0.11.5";
-import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.11.5";
-import { validSquads } from "./squads.mjs?v=0.11.5";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.11.6";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.11.6";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.6";
+import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.11.6";
+import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.6";
+import { CLASSES, classId, lineupSlots } from "./classes.mjs?v=0.11.6";
+import { pawnStyle } from "./pawn-style.mjs?v=0.11.6";
+import { petMapLabel } from "./map-overlay.mjs?v=0.11.6";
+import { createAuthority } from "./authority.mjs?v=0.11.6";
+import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.11.6";
+import { validSquads } from "./squads.mjs?v=0.11.6";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -202,7 +202,7 @@ export async function initialize(OBR, Command) {
     normalizeSelection();
     const snapshot = {
       ...(legacySnapshot ?? {}),
-      rules: "0.11.5",
+      rules: "0.11.6",
       board: board.key, host: connection,
       epoch: (state?.board === board.key ? epochOf(state) : 0) + (acquire ? 1 : 0),
       revision: !acquire && state?.board === board.key && Number.isSafeInteger(state.revision) ? state.revision + 1 : 1,

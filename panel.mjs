@@ -1,7 +1,7 @@
 import OBR from "https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm";
-import { NS } from "./rules.mjs?v=0.11.5";
-import { createPanel, scenePortraits } from "./panel-ui.mjs?v=0.11.5";
-import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.5";
+import { NS } from "./rules.mjs?v=0.11.6";
+import { createPanel, scenePortraits } from "./panel-ui.mjs?v=0.11.6";
+import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.6";
 
 if (new URLSearchParams(location.search).has("obrref")) {
   OBR.onReady(async () => {
