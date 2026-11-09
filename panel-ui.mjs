@@ -1,9 +1,9 @@
-import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.11.6";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.6";
-import { isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.6";
-import { CLASSES, classId } from "./classes.mjs?v=0.11.6";
-import { spawnGroups } from "./roster.mjs?v=0.11.6";
-import { ownedSquads, memberLabel, swapMember, orderSummary } from "./squads.mjs?v=0.11.6";
+import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.11.7";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.7";
+import { isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.7";
+import { CLASSES, classId } from "./classes.mjs?v=0.11.7";
+import { spawnGroups } from "./roster.mjs?v=0.11.7";
+import { ownedSquads, memberLabel, swapMember, orderSummary } from "./squads.mjs?v=0.11.7";
 
 const ASPECT_LABEL = { attack: "Нападение", support: "Поддержка", heal: "Исцеление", defense: "Защита" };
 const ACTION_LABEL = { attack: "Атаковать", support: "Поддержать", heal: "Лечить", defense: "Защищаться" };
@@ -423,7 +423,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
   }
 
   function render() {
-    const compatible = state?.rules === "0.11.6";
+    const compatible = state?.rules === "0.11.7";
     element("loading").hidden = compatible;
     element("lobby").hidden = !compatible || state.phase !== "lobby";
     element("playing").hidden = !compatible || state.phase === "lobby";
