@@ -1,12 +1,12 @@
-import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.11.7";
-import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.11.7";
-import { modeOf } from "./control.mjs?v=0.11.7";
-import { captureStatus } from "./rules.mjs?v=0.11.7";
-import { respawnFields } from "./roster.mjs?v=0.11.7";
+import { STATIC_FIELDS } from "./panel-labels.mjs?v=0.11.8";
+import { mapFields, mapPaths } from "./map-overlay.mjs?v=0.11.8";
+import { modeOf } from "./control.mjs?v=0.11.8";
+import { captureStatus } from "./rules.mjs?v=0.11.8";
+import { respawnFields } from "./roster.mjs?v=0.11.8";
 const PANEL_KEY = "ru.allods.dominion/help-view";
-const guideUrl = new URL("./guide.svg?v=0.11.7", import.meta.url).href;
+const guideUrl = new URL("./guide.svg?v=0.11.8", import.meta.url).href;
 const blankUrl = new URL("./blank.svg", import.meta.url).href;
-const mapLabelCoverUrl = new URL("./map-label-cover.svg?v=0.11.7", import.meta.url).href;
+const mapLabelCoverUrl = new URL("./map-label-cover.svg?v=0.11.8", import.meta.url).href;
 const COLORS = { text: "#e8f0f5", muted: "#a8bac8", red: "#ffb0aa", blue: "#9adeff", amber: "#ffd296", green: "#a7e2c4" };
 // Owlbear validates every TextStyle field, including text hidden on an image.
 const TEXT_STYLE = {

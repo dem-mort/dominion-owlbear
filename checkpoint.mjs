@@ -1,5 +1,5 @@
-import { newMatch, SCORE_STEP } from "./rules.mjs?v=0.11.7";
-import { lineupSlots } from "./classes.mjs?v=0.11.7";
+import { newMatch, SCORE_STEP } from "./rules.mjs?v=0.11.8";
+import { lineupSlots } from "./classes.mjs?v=0.11.8";
 
 // Public snapshots already contain health/claims/captures and combat views.
 // Store only the missing simulation state, avoiding a second full match copy.

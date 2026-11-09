@@ -1,5 +1,6 @@
-import { aspectOptions, defaultAspect } from "./classes.mjs?v=0.11.7";
-export { aspectOptions, defaultAspect } from "./classes.mjs?v=0.11.7";
+import { aspectOptions, defaultAspect } from "./classes.mjs?v=0.11.8";
+import { spawnPosition } from "./pawn-style.mjs?v=0.11.8";
+export { aspectOptions, defaultAspect } from "./classes.mjs?v=0.11.8";
 export const STEP_SECONDS = 3;
 export const COMBAT_STEPS = 5;
 export const MAX_HP = 100;
@@ -31,7 +32,7 @@ export function defeat(match, pawn, reason) {
   pawn.deadUntil = match.elapsed + 25;
   pawn.destination = null;
   pawn.retreating = false;
-  pawn.position = { ...match.board.spawn[pawn.team] };
+  pawn.position = spawnPosition(match.board, pawn);
   pawn.pet = false;
   pawn.deathReason = reason;
 }

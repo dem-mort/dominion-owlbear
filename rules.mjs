@@ -1,5 +1,6 @@
-import { combatTick, combatForPawn, combatClick, defaultAspect, aspectOptions, MAX_HP } from "./combat.mjs?v=0.11.7";
-export { combatForPawn, combatClick, combatViews, defaultAspect, aspectOptions, MAX_HP, ASPECTS, STEP_SECONDS, COMBAT_STEPS } from "./combat.mjs?v=0.11.7";
+import { combatTick, combatForPawn, combatClick, defaultAspect, aspectOptions, MAX_HP } from "./combat.mjs?v=0.11.8";
+import { lobbyPosition, spawnPosition } from "./pawn-style.mjs?v=0.11.8";
+export { combatForPawn, combatClick, combatViews, defaultAspect, aspectOptions, MAX_HP, ASPECTS, STEP_SECONDS, COMBAT_STEPS } from "./combat.mjs?v=0.11.8";
 export const NS = "ru.allods.dominion";
 export const TOTAL = 720;
 export const TARGET = 1000;
@@ -65,13 +66,18 @@ export function readBoard(items) {
     x: points[1].position.x + (p.x - DROP.x) * scale,
     y: points[1].position.y + (p.y - DROP.y) * scale,
   });
+  const lobby = { red: at({ x: 153, y: 395 }), blue: at({ x: 776, y: 790 }) };
   return {
     key: points.map(point => point.id).join("/"),
-    scale,
+    scale, lobby,
+    scenery: [...points, ...pets, ...scores, ...items.filter(item => item.layer === "MAP" && item.name === "Осколок Силы · Карта")].map(item => item.id),
     points: points.map(({ id, name, position }) => ({ id, name, position, radius: 36 * scale })),
     pets: pets.map(({ id, position }, index) => ({ id, name: "Б" + (index + 1), position, radius: 22 * scale })),
     scores: scores.map(item => item.id),
-    slots: slots.map(({ id, name, position, locked }) => ({ id, name, position, locked: Boolean(locked), team: name.startsWith("К") ? "red" : "blue" })).sort((a, b) => a.name.localeCompare(b.name, "ru")),
+    slots: slots.map(({ id, name, locked }) => {
+      const slot = { id, name, locked: Boolean(locked), team: name.startsWith("К") ? "red" : "blue" };
+      return { ...slot, position: lobbyPosition({ scale, lobby }, slot) };
+    }).sort((a, b) => a.name.localeCompare(b.name, "ru")),
     spawn: { red: at(RED), blue: at(BLUE) },
     bounds: { min: at({ x: 244, y: 119 }), max: at({ x: 809, y: 696 }) },
   };
@@ -80,12 +86,10 @@ export function readBoard(items) {
 export function newMatch(board, claims, routeSeconds, calibrated) {
   const pawns = {};
   for (const slot of board.slots) {
-    const index = Number(slot.name[1]) - 1;
-    const spawn = board.spawn[slot.team];
     const chosenAspect = claims[slot.id]?.aspect ?? defaultAspect(slot);
     pawns[slot.id] = {
       ...slot,
-      position: { x: spawn.x + (index % 3 - 1) * 19 * board.scale, y: spawn.y + (index < 3 ? -10 : 10) * board.scale },
+      position: spawnPosition(board, slot),
       claim: claims[slot.id] || null,
       destination: null, deadUntil: 0, pet: false, deathReason: null,
       hp: MAX_HP, lastCombatAt: -Infinity, retreating: false,

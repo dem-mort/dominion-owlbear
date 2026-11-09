@@ -1,9 +1,9 @@
-import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.11.7";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.7";
-import { isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.7";
-import { CLASSES, classId } from "./classes.mjs?v=0.11.7";
-import { spawnGroups } from "./roster.mjs?v=0.11.7";
-import { ownedSquads, memberLabel, swapMember, orderSummary } from "./squads.mjs?v=0.11.7";
+import { TOTAL, TEAM_NAME, ASPECTS, aspectOptions, defaultAspect, captureStatus } from "./rules.mjs?v=0.11.8";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.8";
+import { isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.8";
+import { CLASSES, classId } from "./classes.mjs?v=0.11.8";
+import { spawnGroups } from "./roster.mjs?v=0.11.8";
+import { ownedSquads, memberLabel, swapMember, orderSummary } from "./squads.mjs?v=0.11.8";
 
 const ASPECT_LABEL = { attack: "Нападение", support: "Поддержка", heal: "Исцеление", defense: "Защита" };
 const ACTION_LABEL = { attack: "Атаковать", support: "Поддержать", heal: "Лечить", defense: "Защищаться" };
@@ -84,6 +84,7 @@ export function controllerCombatPrompt(state, combat, connection, pressed) {
 export function createPanel({ root = document, connection, name, host, send }) {
   const element = id => root.getElementById(id);
   const pointButtons = Array.from(root.querySelectorAll("#points button"));
+  const petButtons = Array.from(root.querySelectorAll("#pet-destinations button"));
   const make = (tag, className, value) => {
     const node = root.createElement(tag);
     if (className) node.className = className;
@@ -423,7 +424,7 @@ export function createPanel({ root = document, connection, name, host, send }) {
   }
 
   function render() {
-    const compatible = state?.rules === "0.11.7";
+    const compatible = state?.rules === "0.11.8";
     element("loading").hidden = compatible;
     element("lobby").hidden = !compatible || state.phase !== "lobby";
     element("playing").hidden = !compatible || state.phase === "lobby";
@@ -510,6 +511,20 @@ export function createPanel({ root = document, connection, name, host, send }) {
       button.querySelector(".point-status").textContent = assigned ? "На старте · " + assigned : status;
       button.setAttribute("aria-label", (canMove ? preparing ? "Назначить: " : "Бежать: " : "") + point.name + " · " + status);
     }
+    text("pet-recipient", order.ids.length ? "Идут: " + order.label : "Выбери своего персонажа");
+    text("pet-pickup-help", (preparing ? "Пойдут после старта. " : "") + (chosen.length > 1
+      ? "Баф получит один герой. Для точного выбора носителя: «Кому приказ» → «Только выбранный». Взятие: 5 с без врагов."
+      : "Нажми Б1, Б2 или Б3 — герой добежит и возьмёт баф за 5 с без врагов."));
+    for (const button of petButtons) {
+      const pet = state.pets.find(pet => pet.name === button.dataset.pet);
+      const minePickup = pet?.pickup && state.claims[pet.pickup]?.connection === connection;
+      const progress = minePickup && pet.progress > 0 ? "Взятие " + Math.min(100, Math.floor(pet.progress / 5 * 100)) + "%" : "";
+      const status = !pet ? "Нет на карте" : progress || (pet.fighting ? "Идёт бой" : pet.available ? "ГОТОВ" : state.nextWave < TOTAL ? "Через " + timer(state.nextWave - state.elapsed) : "Нет бафа");
+      button.textContent = button.dataset.pet + " · " + status;
+      button.disabled = !pet || !canMove || waiting;
+      button.dataset.ready = String(Boolean(pet?.available));
+      button.setAttribute("aria-label", (canMove ? preparing ? "На старте за бафом: " : "За бафом: " : "") + button.dataset.pet + " · " + status);
+    }
     renderSpawn();
     const ready = state.pets.filter(pet => pet.available && !pet.fighting).map(pet => pet.name);
     const contested = state.pets.filter(pet => pet.fighting).map(pet => pet.name);
@@ -563,6 +578,11 @@ export function createPanel({ root = document, connection, name, host, send }) {
   element("release").addEventListener("click", () => void run({ type: "release", id: own() }));
   element("practice-opponent").addEventListener("click", () => void run({ type: "practice-opponent" }));
   for (const button of pointButtons) button.addEventListener("click", () => { if (!["preparing", "playing"].includes(state?.phase) || state.recoveryRequired) return; requestedPoint = button.dataset.point; void run({ type: "move-to-point", id: own(), ids: selectedIds(state, connection), point: button.dataset.point }); });
+  for (const button of petButtons) button.addEventListener("click", () => {
+    if (button.disabled || !["preparing", "playing"].includes(state?.phase) || state.recoveryRequired) return;
+    requestedPoint = button.dataset.pet;
+    void run({ type: "move-to-pet", id: own(), ids: selectedIds(state, connection), pet: button.dataset.pet });
+  });
   element("cancel-plan").addEventListener("click", () => { if (state?.phase === "preparing" && !state.recoveryRequired) void run({ type: "stop", id: own(), ids: selectedIds(state, connection) }); });
   element("combat-action").addEventListener("click", async () => {
     const combat = focusedFight();

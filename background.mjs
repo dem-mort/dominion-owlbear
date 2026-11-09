@@ -1,14 +1,14 @@
-import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.11.7";
-import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.11.7";
-import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.7";
-import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.11.7";
-import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.7";
-import { CLASSES, classId, lineupSlots } from "./classes.mjs?v=0.11.7";
-import { pawnStyle } from "./pawn-style.mjs?v=0.11.7";
-import { petMapLabel } from "./map-overlay.mjs?v=0.11.7";
-import { createAuthority } from "./authority.mjs?v=0.11.7";
-import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.11.7";
-import { validSquads } from "./squads.mjs?v=0.11.7";
+import { NS, TEAM_NAME, DEFAULT_ROUTE_SECONDS, readBoard, newMatch, tick, combatClick, combatViews, aspectOptions, defaultAspect } from "./rules.mjs?v=0.11.8";
+import { createLocalVision, originalItem, HOME_KEY, PAWN_KEY, SIGHT_RADIUS } from "./vision.mjs?v=0.11.8";
+import { CONTROL_MODES, modeOf, ownedIds, activeId, selectedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.8";
+import { mapTarget, targetPosition, hitTarget } from "./targets.mjs?v=0.11.8";
+import { createSnapshotGate, isOlderSnapshot } from "./snapshot-sync.mjs?v=0.11.8";
+import { CLASSES, classId, lineupSlots } from "./classes.mjs?v=0.11.8";
+import { pawnStyle, spawnPosition } from "./pawn-style.mjs?v=0.11.8";
+import { petMapLabel } from "./map-overlay.mjs?v=0.11.8";
+import { createAuthority } from "./authority.mjs?v=0.11.8";
+import { checkpoint, restoreCheckpoint } from "./checkpoint.mjs?v=0.11.8";
+import { validSquads } from "./squads.mjs?v=0.11.8";
 
 const command = NS + "/command";
 const tool = NS + "/run";
@@ -143,9 +143,11 @@ export async function initialize(OBR, Command) {
       ...board.pets.map(pet => [pet.id, petMapLabel(pet)]),
     ]);
     const styles = new Map(lineup().map(slot => [slot.id, pawnStyle(slot, board.scale)]));
+    const positions = new Map(board.slots.map(slot => [slot.id, slot.position]));
     const changed = sceneItems.filter(item => labels.has(item.id) &&
       (item.text?.type === "PLAIN" && item.text.plainText !== labels.get(item.id) ||
-       styles.has(item.id) && JSON.stringify([item.image, item.grid, item.scale]) !== JSON.stringify(Object.values(styles.get(item.id)))));
+       styles.has(item.id) && (JSON.stringify([item.image, item.grid, item.scale]) !== JSON.stringify(Object.values(styles.get(item.id))) ||
+         item.position.x !== positions.get(item.id).x || item.position.y !== positions.get(item.id).y)));
     if (!changed.length) return;
     await OBR.scene.items.updateItems(changed, items => {
       for (const item of items) {
@@ -155,9 +157,19 @@ export async function initialize(OBR, Command) {
             visible: item.visible, image: plainCopy(item.image), text: plainCopy(item.text),
             grid: plainCopy(item.grid), scale: plainCopy(item.scale) };
           Object.assign(item, plainCopy(styles.get(item.id)));
+          item.position = { ...positions.get(item.id) };
         }
         label(item, labels.get(item.id));
       }
+    });
+  }
+
+  async function syncScenery() {
+    if (!sceneReady || !board || state?.host !== connection) return;
+    const ids = new Set(board.scenery);
+    const changed = sceneItems.filter(item => ids.has(item.id) && (!item.locked || !item.disableHit));
+    if (changed.length) await OBR.scene.items.updateItems(changed, drafts => {
+      for (const item of drafts) { item.locked = true; item.disableHit = true; }
     });
   }
 
@@ -202,7 +214,7 @@ export async function initialize(OBR, Command) {
     normalizeSelection();
     const snapshot = {
       ...(legacySnapshot ?? {}),
-      rules: "0.11.7",
+      rules: "0.11.8",
       board: board.key, host: connection,
       epoch: (state?.board === board.key ? epochOf(state) : 0) + (acquire ? 1 : 0),
       revision: !acquire && state?.board === board.key && Number.isSafeInteger(state.revision) ? state.revision + 1 : 1,
@@ -229,7 +241,7 @@ export async function initialize(OBR, Command) {
         routeSeconds: match.routeSeconds, calibrated: match.calibrated,
         sightRadius: SIGHT_RADIUS * board.scale,
         points: match.points.map(({ name, team, clash, progress, capturing, captureRate }) => ({ name, team, clash, progress, capturing, captureRate })),
-        pets: match.pets.map(({ name, available, combat }) => ({ name, available, fighting: Boolean(combat) })),
+        pets: match.pets.map(({ name, available, combat, progress, pickup }) => ({ name, available, fighting: Boolean(combat), progress, pickup })),
         pawns: Object.fromEntries(Object.values(match.pawns)
           .filter(pawn => pawn.claim)
           .map(pawn => [pawn.id, { pet: pawn.pet, deadUntil: pawn.deadUntil, deathReason: pawn.deathReason,
@@ -242,6 +254,7 @@ export async function initialize(OBR, Command) {
       combatDirty = false;
     }
     state = snapshot;
+    await syncScenery();
     updateLocal();
     // Ephemeral snapshots reach every connection, including multiple tabs of
     // the same account. Metadata remains the reconnect/persistence channel.
@@ -500,20 +513,19 @@ export async function initialize(OBR, Command) {
         const pawns = living();
         for (const team of ["red", "blue"]) {
           const side = pawns.filter(pawn => pawn.team === team);
-          for (const [index, pawn] of side.entries()) {
-            const offset = formation(index, side.length);
-            pawn.destination = { x: board.spawn[team].x + offset.x, y: board.spawn[team].y + offset.y };
+          for (const pawn of side) {
+            pawn.destination = spawnPosition(board, pawn);
             pawn.retreating = true;
           }
         }
         return;
       }
-      if (data.type === "move" || data.type === "move-to-point") {
+      if (data.type === "move" || data.type === "move-to-point" || data.type === "move-to-pet") {
         const pawns = living(true);
         if (!pawns.length) return;
         const { min, max } = board.bounds;
-        const target = data.type === "move-to-point"
-          ? board.points.find(point => point.name === data.point)?.position
+        const target = data.type === "move-to-point" || data.type === "move-to-pet"
+          ? (data.type === "move-to-pet" ? board.pets : board.points).find(area => area.name === (data.type === "move-to-pet" ? data.pet : data.point))?.position
           : data.position;
         const { x, y } = target || {};
         if (!Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -521,7 +533,7 @@ export async function initialize(OBR, Command) {
           const offset = formation(index, pawns.length);
           pawn.destination = { x: Math.max(min.x, Math.min(max.x, x + offset.x)), y: Math.max(min.y, Math.min(max.y, y + offset.y)) };
           pawn.retreating = false;
-          pawn.orderPoint = data.type === "move-to-point" ? data.point : null;
+          pawn.orderPoint = data.type === "move-to-pet" ? data.pet : data.type === "move-to-point" ? data.point : null;
         }
         if (preparation) planDirty = true;
         return;

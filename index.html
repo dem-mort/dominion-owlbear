@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Доминион</title>
-<link rel="stylesheet" href="./panel.css?v=0.11.7">
+<link rel="stylesheet" href="./panel.css?v=0.11.8">
 <main class="app">
   <header class="app-header">
     <div><div class="eyebrow">ДОМИНИОН / 6×6</div><h1>Осколок Силы</h1></div>
@@ -88,6 +88,16 @@
           <li><button type="button" data-point="Капля"><svg class="point-symbol" viewBox="0 0 24 28" aria-hidden="true"><path d="M12 1C10 7 3 14 3 19a9 9 0 0 0 18 0c0-5-7-12-9-18Z"/></svg><span class="point-info"><b>Капля</b><span class="point-status">Свободна</span></span><span class="point-arrow" aria-hidden="true">→</span></button></li>
           <li><button type="button" data-point="Звезда"><span class="point-symbol" aria-hidden="true">★</span><span class="point-info"><b>Звезда</b><span class="point-status">Свободна</span></span><span class="point-arrow" aria-hidden="true">→</span></button></li>
         </ul>
+        <div class="pet-routes" aria-labelledby="pet-routes-heading">
+          <h3 id="pet-routes-heading">За бафом питомца</h3>
+          <p id="pet-recipient" class="fine"></p>
+          <div id="pet-destinations" class="pet-destinations">
+            <button type="button" data-pet="Б1">Б1</button>
+            <button type="button" data-pet="Б2">Б2</button>
+            <button type="button" data-pet="Б3">Б3</button>
+          </div>
+          <p id="pet-pickup-help" class="fine">Герой добежит и возьмёт баф за 5 с без врагов.</p>
+        </div>
         <p id="free-move" class="fine" hidden>Свободный маршрут: инструмент «Бег» на карте.</p>
         <button id="cancel-plan" type="button" class="secondary" hidden>Отменить приказ на старт</button>
       </section>
@@ -102,5 +112,5 @@
   </section>
   <p id="notice" role="status" class="notice" hidden></p>
 </main>
-<script type="module" src="./panel.mjs?v=0.11.7"></script>
+<script type="module" src="./panel.mjs?v=0.11.8"></script>
 </html>

@@ -215,4 +215,9 @@ h1 { font-size: 17px; }
 .point-info b { font-size: 13px; }.point-status { font-size: 12px; }.point-list button { min-height: 48px; }
 .retreat { min-height: 40px; font-size: 12px; }.retreat span { font-size: 11px; }
 .pet-card p,.pet-card .fine { font-size: 12px; }.pet-card .amber { font-size: 11px; }
+.pet-routes { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.pet-routes h3 { margin: 0 0 5px; font-size: 13px; }
+.pet-destinations { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; margin: 7px 0; }
+.pet-destinations button { min-height: 45px; padding: 6px 3px; font-size: 11px; white-space: normal; }
+.pet-destinations button[data-ready="true"] { border-color: #729c83; color: #c3f0d0; }
 @media (max-width: 325px) { h1 { font-size: 17px; }.squad-pick span { font-size: 10px; }.combat-team { padding-inline: 5px; } }

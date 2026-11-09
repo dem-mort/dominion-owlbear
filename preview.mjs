@@ -1,7 +1,7 @@
-import { createPanel } from "./panel-ui.mjs?v=0.11.6";
-import { modeOf, ownedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.6";
-import { CLASSES, classId, lineupSlots, aspectOptions, defaultAspect } from "./classes.mjs?v=0.11.6";
-import { teamSquads, swapMember } from "./squads.mjs?v=0.11.6";
+import { createPanel } from "./panel-ui.mjs?v=0.11.8";
+import { modeOf, ownedIds, claimTargetIds, canStart } from "./control.mjs?v=0.11.8";
+import { CLASSES, classId, lineupSlots, aspectOptions, defaultAspect } from "./classes.mjs?v=0.11.8";
+import { teamSquads, swapMember } from "./squads.mjs?v=0.11.8";
 const classes = ["Воин", "Храмовник", "Разведчик", "Жрец", "Маг", "Бард"];
 const slots = ["К", "С"].flatMap(prefix => classes.map((name, index) => ({ id: prefix + (index + 1), name: prefix + (index + 1) + " · " + name, team: prefix === "К" ? "red" : "blue" })));
 const aspects = Object.fromEntries(slots.map(slot => [slot.id, slot.name.endsWith("Жрец") ? "heal" : slot.name.endsWith("Бард") ? "support" : "attack"]));
@@ -17,6 +17,14 @@ function addMatch(state) {
     pawns: Object.fromEntries(Object.keys(state.claims).map(id => [id, { hp: 76, aspect: state.aspects[id], pet: id === mine, moving: false, deadUntil: 0 }])), combats: [] });
 }
 function makeState(scenario) {
+  if (["pet-route-planned", "pet-pickup-progress", "pet-route-dead"].includes(scenario)) {
+    const state = makeState(scenario === "pet-route-planned" ? "teams-preparing" : "teams-playing");
+    state.active.local = "К4"; state.selections.local = ["К4"];
+    if (scenario === "pet-route-planned") { state.pawns.К4.planned = true; state.pawns.К4.orderPoint = "Б1"; }
+    if (scenario === "pet-pickup-progress") { state.pets[0].pickup = "К4"; state.pets[0].progress = 2.5; }
+    if (scenario === "pet-route-dead") { state.pawns.К4.deadUntil = state.elapsed + 15; state.pawns.К4.hp = 0; }
+    return state;
+  }
   if (["teams-preparing-pairs", "teams-squads-custom"].includes(scenario)) {
     const state = makeState("teams-preparing");
     state.classes = { К2: "summoner", К4: "priest" }; state.slots = lineupSlots(slots, state.classes);
@@ -43,7 +51,7 @@ function makeState(scenario) {
   const lobby = ["lobby", "selected", "player", "teams-lobby", "teams-ready", "solo-lobby", "solo-ready"].includes(scenario);
   const empty = ["lobby", "teams-lobby", "solo-lobby"].includes(scenario);
   const claims = empty ? {} : mode === "individual" ? picked() : ownerClaims(mode);
-  const state = { rules: "0.11.6", board: "preview", host: scenario === "player" ? "other" : "local", slots, aspects: { ...aspects }, controlMode: mode,
+  const state = { rules: "0.11.8", board: "preview", host: scenario === "player" ? "other" : "local", slots, aspects: { ...aspects }, controlMode: mode,
     active: empty ? {} : { local: mine }, selections: empty ? {} : { local: [mine] }, claims, phase: lobby ? "lobby" : scenario === "finished" ? "finished" : "playing" };
   if (!lobby) addMatch(state);
   if (scenario.includes("preparing")) {
@@ -135,7 +143,7 @@ async function send(command) {
   }
   if (command.type === "focus-combat") document.getElementById("preview-round").textContent = "Демо: цель находится в комнате Owlbear";
   if (command.type === "retreat") { for (const id of command.ids) current.pawns[id].retreating = true; current.combats = current.combats.filter(fight => !command.ids.some(id => fight.members.includes(id))); }
-  if (command.type === "move-to-point") for (const id of command.ids) Object.assign(current.pawns[id], { moving: current.phase !== "preparing", planned: current.phase === "preparing", orderPoint: command.point });
+  if (command.type === "move-to-point" || command.type === "move-to-pet") for (const id of command.ids) Object.assign(current.pawns[id], { moving: current.phase !== "preparing", planned: current.phase === "preparing", orderPoint: command.pet ?? command.point });
   if (command.type === "stop") for (const id of command.ids) Object.assign(current.pawns[id], { moving: false, planned: false, orderPoint: null });
   if (command.type === "start") {
     if (command.practice) { current.claims = { К1: { connection: "local", name: "К1" } }; current.active.local = "К1"; current.selections.local = ["К1"]; }
@@ -181,6 +189,9 @@ addPreviewOption("solo-respawn", "Респ · обе команды");
 addPreviewOption("teams-preparing-pairs", "Подготовка · две пары с хилами");
 addPreviewOption("teams-squads-custom", "Подготовка · свои группы");
 addPreviewOption("teams-three-combats", "Три стычки · одно действие принято");
+addPreviewOption("pet-route-planned", "Баф · маршрут на старт");
+addPreviewOption("pet-pickup-progress", "Баф · взятие 50%");
+addPreviewOption("pet-route-dead", "Баф · персонаж на респе");
 scenario.addEventListener("change", () => {
   const previous = document.querySelector("main"), next = pristinePanel.cloneNode(true); next.style.width = previous.style.width; previous.replaceWith(next);
   current = makeState(scenario.value); panel = createPanel({ connection: "local", name: "Игрок", host: scenario.value !== "player", send }); panel.update(structuredClone(current));

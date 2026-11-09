@@ -1,5 +1,5 @@
-import { ownedIds } from "./control.mjs?v=0.11.7";
-import { NS } from "./rules.mjs?v=0.11.7";
+import { ownedIds } from "./control.mjs?v=0.11.8";
+import { NS } from "./rules.mjs?v=0.11.8";
 
 export const TARGET_KEY = NS + "/map-target";
 const VIEW_KEY = NS + "/local-view";

@@ -1,6 +1,16 @@
-import { classId } from "./classes.mjs?v=0.11.7";
+import { classId } from "./classes.mjs?v=0.11.8";
 
 export const PAWN_DIAMETER = 26;
+export function lobbyPosition(board, slot) {
+  const index = Number(slot.name[1]) - 1, center = board.lobby[slot.team];
+  return { x: center.x + (index % 3 - 1) * 70 * board.scale,
+    y: center.y + (Math.floor(index / 3) - .5) * 60 * board.scale };
+}
+export function spawnPosition(board, slot) {
+  const index = Number(slot.name[1]) - 1, center = board.spawn[slot.team], gap = PAWN_DIAMETER + 4;
+  return { x: center.x + (index % 3 - 1) * gap * board.scale,
+    y: center.y + (Math.floor(index / 3) - .5) * gap * board.scale };
+}
 // Owlbear image coordinates use 150 scene units per grid square. Explicit image
 // dimensions and centering avoid inheriting the previous class's token geometry.
 export function pawnStyle(slot, boardScale = 1) {
